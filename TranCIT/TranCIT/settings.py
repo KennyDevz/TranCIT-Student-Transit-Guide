@@ -37,7 +37,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'route_input',
     'TranCIT_dash_board',
+
 ]
 
 MIDDLEWARE = [
