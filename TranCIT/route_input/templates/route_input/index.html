@@ -1,0 +1,68 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TranCIT Prototype</title>
+  <link rel="stylesheet" href="{% static 'route_input/css/styles.css' %}">
+</head>
+<body>
+  <div class="container">
+
+    <!-- Left Panel -->
+    <aside class="sidebar">
+      <h3>Route Input</h3>
+      <form id="routeForm">
+        <label>Current Location</label>
+        <input type="text" placeholder="Enter current location">
+
+        <label>Search</label>
+        <input type="text" placeholder="Search destination">
+
+        <label>Transportation Type</label>
+        <select>
+          <option>Jeepney</option>
+          <option>Bus</option>
+          <option>Taxi</option>
+        </select>
+
+        <label>Save Location</label>
+        <button type="button" class="btn">Save Location</button>
+
+        <label>Fare Estimator</label>
+        <input type="number" placeholder="Estimated Fare">
+
+        <button type="submit" class="btn primary">Navigate</button>
+      </form>
+
+      <div class="saved-locations">
+        <h4>Saved Locations</h4>
+        <ul id="savedList"></ul>
+      </div>
+    </aside>
+
+    <!-- Map Area -->
+    <main class="map-area">
+      <img src="{% static 'route_input/images/sample_map.jpg' %}" alt="Map" class="map-image">
+      <div class="map-controls">
+        <button onclick="zoomIn()">+</button>
+        <button onclick="zoomOut()">-</button>
+      </div>
+    </main>
+
+    <!-- Suggestions -->
+    <aside class="suggestions">
+      <h3>Suggestions</h3>
+      <ul>
+        <li>"Sakay 12I para CIT-U"</li>
+        <li>"Ride 03A to Colon"</li>
+      </ul>
+      <textarea placeholder="Write your own suggestion"></textarea>
+      <button class="btn">Submit</button>
+    </aside>
+
+  </div>
+
+  <script src="{% static 'route_input/js/script.js' %}"></script>
+</body>
+</html>
