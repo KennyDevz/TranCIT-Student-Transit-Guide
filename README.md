@@ -1,4 +1,4 @@
-****TranCIT - Student Transit Guide****
+**********TranCIT - Student Transit Guide**********
 
 **Project Overview**
 
@@ -40,5 +40,6 @@ TranCIT - Student Transit Guide offers numerous benefits to its users:
   - Increased Safety & Confidence: Empowers students to travel independently and securely.
   - Reduced Stress: Alleviates the anxiety associated with navigating an unfamiliar city.
   - Improved Accessibility: Makes Cebu's public transport system more approachable for non-local students and newcomers.
+
 
 
