@@ -105,3 +105,61 @@ body {
   padding: 6px;
   box-sizing: border-box;
 }
+
+.error {
+  color: red;
+  font-size: 0.8rem;
+  display: block;
+  margin-top: 0.1rem;    
+  min-height: 1em;        
+}
+
+/* Responsive Layout */
+@media (max-width: 1024px) {
+  .container {
+    flex-direction: column; 
+  }
+
+  .sidebar,
+  .map-area,
+  .suggestions {
+    width: 100%;   
+    height: auto;  
+    border: none;  
+  }
+
+  .map-area {
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 14px; 
+  }
+
+  .btn {
+    padding: 6px;
+    font-size: 0.9rem;
+  }
+
+  .map-area {
+    min-height: 200px;
+  }
+
+  .sidebar input,
+  .sidebar select,
+  .sidebar textarea {
+    font-size: 0.9rem;
+    padding: 5px;
+  }
+
+  .suggestions textarea {
+    font-size: 0.9rem;
+    padding: 5px;
+  }
+}
+
+
+
+

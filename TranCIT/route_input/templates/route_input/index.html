@@ -12,28 +12,33 @@
     <!-- Left Panel -->
     <aside class="sidebar">
       <h3>Route Input</h3>
-      <form id="routeForm">
-        <label>Current Location</label>
-        <input type="text" placeholder="Enter current location">
+        <form id="routeForm" method="post" novalidate>
+          {% csrf_token %}
 
-        <label>Search</label>
-        <input type="text" placeholder="Search destination">
+          <label>Current Location</label>
+          <input type="text" name="origin" placeholder="Enter current location" required>
+          <span class="error" id="error-origin"></span>
 
-        <label>Transportation Type</label>
-        <select>
-          <option>Jeepney</option>
-          <option>Bus</option>
-          <option>Taxi</option>
-        </select>
+          <label>Search</label>
+          <input type="text" name="destination" placeholder="Search destination" required>
+          <span class="error" id="error-destination"></span>
 
-        <label>Save Location</label>
-        <button type="button" class="btn">Save Location</button>
+          <label>Transportation Type</label>
+          <select name="transport_type" required>
+            <option value="">--Select--</option>
+            <option>Jeepney</option>
+            <option>Bus</option>
+            <option>Taxi</option>
+          </select>
+          <span class="error" id="error-transport"></span>
 
-        <label>Fare Estimator</label>
-        <input type="number" placeholder="Estimated Fare">
+          <label>Fare Estimator</label>
+          <input type="number" name="fare" min="0" step="1" placeholder="Estimated Fare">
+          <span class="error" id="error-fare"></span>
 
-        <button type="submit" class="btn primary">Navigate</button>
-      </form>
+          <button type="submit" class="btn primary">Navigate</button>
+        </form>
+
 
       <div class="saved-locations">
         <h4>Saved Locations</h4>
