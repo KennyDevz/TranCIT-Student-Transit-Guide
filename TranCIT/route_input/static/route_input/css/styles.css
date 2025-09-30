@@ -6,8 +6,65 @@ body {
 
 .container {
   display: flex;
-  flex-direction: row; /* horizontal layout */
+  flex-direction: row;
   height: 100vh;
+  padding-top: 50px; /* Space for the top nav */
+  box-sizing: border-box;
+}
+
+.topNav {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #f4f4f4;
+  z-index: 1000;
+  height: 50px;
+}
+
+.topNav ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.topNav li {
+  float: left;
+}
+
+.topNav li a {
+  display: block;
+  color: #333;
+  text-align: center;
+  padding: 14px 16px;
+  text-decoration: none;
+  line-height: 22px;
+}
+
+.topNav li a:hover {
+  background-color: #ddd;
+}
+
+.topNav li a.active {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.topNav input[type=text] {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 17px;
+  width: 300px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 /* Left Panel */
@@ -61,6 +118,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  overflow: hidden;
 }
 
 .map-image {
