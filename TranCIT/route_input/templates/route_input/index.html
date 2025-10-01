@@ -57,10 +57,8 @@
 
     <!-- Map Area -->
     <main class="map-area">
-      <img src="{% static 'route_input/images/sample_map.jpg' %}" alt="Map" class="map-image">
-      <div class="map-controls">
-        <button onclick="zoomIn()">+</button>
-        <button onclick="zoomOut()">-</button>
+      <div id="map-container">
+        {{ map|safe }}
       </div>
     </main>
 
@@ -68,6 +66,7 @@
     <aside class="suggestions">
       <h3>Suggestions</h3>
       <ul>
+        <li>"SAMPLE ONLY"</li>
         <li>"Sakay 12I para CIT-U"</li>
         <li>"Ride 03A to Colon"</li>
       </ul>
