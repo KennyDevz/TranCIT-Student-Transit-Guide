@@ -18,7 +18,7 @@ import sys
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-dotenv_path = BASE_DIR / 'TranCIT_dash_board' / '.env'
+dotenv_path = BASE_DIR / '.env'
 load_dotenv(dotenv_path=dotenv_path) 
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -33,7 +33,6 @@ if DATABASE_URL:
     }
     print("INFO: Using Supabase PostgreSQL database.") 
 else:
-   
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -63,8 +62,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'route_input',
-    'TranCIT_dash_board',
-
 ]
 
 MIDDLEWARE = [

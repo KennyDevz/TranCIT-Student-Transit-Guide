@@ -1,18 +1,18 @@
 from django.shortcuts import render, redirect
 from django.db import DatabaseError
-from .forms import RouteForm # Needs forms.py
+from .forms import RouteForm
 import folium
-from .models import Route # Ensure this import is correct based on your models.py
+from .models import Route
 from decimal import Decimal
 
 def index(request):
     submitted_data = None
     error_message = None
     success_message = None
-    map_html = "" # Initialize map_html
+    map_html = ""
 
     if request.method == 'POST':
-        form = RouteForm(request.POST) # Form now only uses fields from models.py
+        form = RouteForm(request.POST)
         if form.is_valid():
             try:
                 
