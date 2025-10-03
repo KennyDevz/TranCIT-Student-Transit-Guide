@@ -161,77 +161,199 @@ body {
   z-index: 999;
 }
 
-/* Right Panel */
+/* Right Panel - NEW GOOGLE MAPS STYLE */
 .suggestions {
   width: 20%;
-  background: #f9f9f9;
-  padding: 15px;
+  background-color: #f8f9fa; /* Light grey background */
+  padding: 1.5rem;
   box-sizing: border-box;
   border-left: 1px solid #ddd;
   overflow-y: auto;
+  display: flex; /* Flex container for internal elements */
+  flex-direction: column;
+  gap: 1rem; /* Space between sections */
 }
 
 .suggestions h3 {
+  color: #2c3e50;
   margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
 }
 
-.suggestions textarea {
-  width: 100%;
-  margin-top: 10px;
-  padding: 6px;
-  box-sizing: border-box;
+#suggestionSearchForm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
 }
 
-.error {
-  color: red;
-  font-size: 0.8rem;
-  display: block;
-  margin-top: 0.1rem;    
-  min-height: 1em;        
-}
-
-/* Responsive Layout */
-@media (max-width: 1024px) {
-  .container {
-    flex-direction: column; 
-  }
-
-  .sidebar,
-  .map-area,
-  .suggestions {
-    width: 100%;   
-    height: auto;  
-    border: none;  
-  }
-
-  .map-area {
-    min-height: 300px;
-  }
-}
-
-@media (max-width: 480px) {
-  body {
-    font-size: 14px; 
-  }
-
-  .btn {
-    padding: 6px;
+#suggestionSearchForm input,
+#suggestionSearchForm select,
+#suggestionSearchForm .btn {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 4px;
+    border: 1px solid #ddd;
     font-size: 0.9rem;
-  }
+    box-sizing: border-box;
+}
 
-  .map-area {
-    min-height: 200px;
-  }
+#suggestionSearchForm .btn {
+    background-color: #3498db;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
 
-  .sidebar input,
-  .sidebar select,
-  .sidebar textarea {
+#suggestionSearchForm .btn:hover {
+    background-color: #2980b9;
+}
+
+#dynamicSuggestions {
+    max-height: 70vh; /* Make scrollable if many suggestions */
+    overflow-y: auto;
+    border-top: 1px solid #eee; /* Separator for visual appeal */
+    padding-top: 1rem;
+}
+
+.journey-card {
+    background-color: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.journey-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.journey-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.journey-route-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap; /* Allow items to wrap if summary is long */
+    gap: 0.5rem; /* Space between segments */
+}
+
+.segment {
+    background-color: #e9ecef; /* Light grey background for segments */
+    border-radius: 4px;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.85rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.jeepney-segment {
+    background-color: #e0f2f7; /* Light blue for jeepney */
+    color: #007bff;
+}
+
+.walk-segment {
+    background-color: #e2f0d9; /* Light green for walking */
+    color: #28a745;
+}
+.other-segment { /* For Taxi/Motorcycle */
+    background-color: #fff3cd; /* Light yellow */
+    color: #ffc107;
+}
+
+.segment-separator {
+    color: #6c757d;
+    font-weight: normal;
+    margin: 0 0.2rem;
+}
+
+.journey-time {
+    font-weight: bold;
+    color: #2c3e50;
+    font-size: 1.1rem;
+}
+
+.journey-details p {
+    margin: 0.2rem 0;
+    color: #555;
+}
+
+.journey-schedule, .journey-fare, .journey-distance {
     font-size: 0.9rem;
-    padding: 5px;
-  }
+}
 
-  .suggestions textarea {
+.journey-fare {
+    font-weight: bold;
+    color: #27ae60; /* Green for fare */
+}
+
+.view-journey-on-map-btn {
+    background-color: #f39c12; /* Orange color */
+    color: white;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
     font-size: 0.9rem;
-    padding: 5px;
-  }
+    margin-top: 1rem;
+    width: 100%;
+    transition: background-color 0.2s;
+}
+
+.view-journey-on-map-btn:hover {
+    background-color: #e67e22;
+}
+
+/* Basic styling for error/success messages in forms */
+.success-message {
+    color: green;
+    background-color: #e6ffe6;
+    border: 1px solid green;
+    padding: 0.5rem;
+    margin-top: 10px;
+    border-radius: 4px;
+}
+
+.error-message {
+    color: red;
+    background-color: #ffe6e6;
+    border: 1px solid red;
+    padding: 0.5rem;
+    margin-top: 10px;
+    border-radius: 4px;
+}
+/* General input styling for consistency */
+.form-control {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    box-sizing: border-box; /* Include padding/border in element's total width/height */
+}
+.form-control:focus {
+    border-color: #3498db;
+    outline: none;
+}
+
+/* Style for the Detect My Location button (can be customized) */
+.btn.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    margin-top: 5px;
+    background-color: #6c757d; /* Grey button */
+    color: white;
+}
+.btn.btn-sm:hover {
+    background-color: #5a6268;
 }
