@@ -1,4 +1,3 @@
-/* General Layout */
 body {
   margin: 0;
   font-family: Arial, sans-serif;
@@ -67,7 +66,6 @@ body {
   transform: translateX(-50%);
 }
 
-/* Left Panel */
 .sidebar {
   width: 20%;
   background: #f4f4f4;
@@ -161,17 +159,16 @@ body {
   z-index: 999;
 }
 
-/* Right Panel - NEW GOOGLE MAPS STYLE */
 .suggestions {
   width: 20%;
-  background-color: #f8f9fa; /* Light grey background */
+  background-color: #f8f9fa;
   padding: 1.5rem;
   box-sizing: border-box;
   border-left: 1px solid #ddd;
   overflow-y: auto;
-  display: flex; /* Flex container for internal elements */
+  display: flex;
   flex-direction: column;
-  gap: 1rem; /* Space between sections */
+  gap: 1rem;
 }
 
 .suggestions h3 {
@@ -211,9 +208,9 @@ body {
 }
 
 #dynamicSuggestions {
-    max-height: 70vh; /* Make scrollable if many suggestions */
+    max-height: 70vh;
     overflow-y: auto;
-    border-top: 1px solid #eee; /* Separator for visual appeal */
+    border-top: 1px solid #eee;
     padding-top: 1rem;
 }
 
@@ -242,12 +239,12 @@ body {
 .journey-route-summary {
     display: flex;
     align-items: center;
-    flex-wrap: wrap; /* Allow items to wrap if summary is long */
-    gap: 0.5rem; /* Space between segments */
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 .segment {
-    background-color: #e9ecef; /* Light grey background for segments */
+    background-color: #e9ecef;
     border-radius: 4px;
     padding: 0.3rem 0.6rem;
     font-size: 0.85rem;
@@ -258,16 +255,16 @@ body {
 }
 
 .jeepney-segment {
-    background-color: #e0f2f7; /* Light blue for jeepney */
+    background-color: #e0f2f7;
     color: #007bff;
 }
 
 .walk-segment {
-    background-color: #e2f0d9; /* Light green for walking */
+    background-color: #e2f0d9;
     color: #28a745;
 }
-.other-segment { /* For Taxi/Motorcycle */
-    background-color: #fff3cd; /* Light yellow */
+.other-segment {
+    background-color: #fff3cd;
     color: #ffc107;
 }
 
@@ -294,11 +291,11 @@ body {
 
 .journey-fare {
     font-weight: bold;
-    color: #27ae60; /* Green for fare */
+    color: #27ae60;
 }
 
 .view-journey-on-map-btn {
-    background-color: #f39c12; /* Orange color */
+    background-color: #f39c12;
     color: white;
     padding: 0.5rem 1rem;
     border: none;
@@ -314,7 +311,6 @@ body {
     background-color: #e67e22;
 }
 
-/* Basic styling for error/success messages in forms */
 .success-message {
     color: green;
     background-color: #e6ffe6;
@@ -332,26 +328,25 @@ body {
     margin-top: 10px;
     border-radius: 4px;
 }
-/* General input styling for consistency */
+
 .form-control {
     width: 100%;
     padding: 0.75rem;
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 1rem;
-    box-sizing: border-box; /* Include padding/border in element's total width/height */
+    box-sizing: border-box;
 }
 .form-control:focus {
     border-color: #3498db;
     outline: none;
 }
 
-/* Style for the Detect My Location button (can be customized) */
 .btn.btn-sm {
     padding: 0.5rem 1rem;
     font-size: 0.85rem;
     margin-top: 5px;
-    background-color: #6c757d; /* Grey button */
+    background-color: #6c757d;
     color: white;
 }
 .btn.btn-sm:hover {

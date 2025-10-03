@@ -207,7 +207,7 @@ def index(request):
                     error_message = f"Unexpected error saving route: {e}"
                     print(f"ERROR: Unexpected error saving route: {e}")
             
-        # If POST fails, re-render with context and potential error_message
+        
         context = {
             'form': form, 'error_message': error_message, 'success_message': success_message,
             'map': map_html, 'all_routes': suggested_routes, 'get_origin_text': get_origin_text,
@@ -216,7 +216,7 @@ def index(request):
         }
         return render(request, 'route_input/index.html', context)
     
-    # --- Folium Map Generation and Plotting (for GET and POST re-renders) ---
+    
     map_center_lat = 10.3157
     map_center_lon = 123.8854
 
@@ -226,7 +226,7 @@ def index(request):
         
     m = folium.Map(location=[map_center_lat, map_center_lon], zoom_start=14)
 
-    # Plot current detected/geocoded origin
+    # Plot current detected
     if current_origin_lat and current_origin_lon:
         popup_text = "Your Current Location"
         if get_origin_text:
@@ -237,7 +237,7 @@ def index(request):
             icon=folium.Icon(color='blue', icon='location-dot', prefix='fa')
         ).add_to(m)
     
-    # Plot current geocoded destination
+    
     if current_destination_lat and current_destination_lon:
         folium.Marker(
             [float(current_destination_lat), float(current_destination_lon)],
@@ -246,7 +246,7 @@ def index(request):
         ).add_to(m)
 
     # Plot all existing routes
-    for route in suggested_routes: # Using suggested_routes for map plotting now
+    for route in suggested_routes: 
         if all([route.origin_latitude, route.origin_longitude, route.destination_latitude, route.destination_longitude]):
             folium.Marker(
                 [float(route.origin_latitude), float(route.origin_longitude)],
@@ -275,7 +275,7 @@ def index(request):
         'success_message': success_message,
         'error_message': error_message,
         'map': map_html,
-        'all_routes': suggested_routes, # Pass filtered routes for display
+        'all_routes': suggested_routes, 
         'get_origin_text': get_origin_text, 
         'search_origin': search_query_origin,
         'search_destination': search_query_destination,

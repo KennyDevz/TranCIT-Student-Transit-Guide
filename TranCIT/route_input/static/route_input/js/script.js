@@ -82,9 +82,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // --- Control Hidden Code Input ---
         if (transportType === 'Jeepney') {
-            if (codeHiddenInput) codeHiddenInput.value = 'UNKNOWN'; // Default code if not selected by user
+            if (codeHiddenInput) codeHiddenInput.value = 'UNKNOWN'; 
         } else {
-            if (codeHiddenInput) codeHiddenInput.value = ''; // Clear code if not Jeepney
+            if (codeHiddenInput) codeHiddenInput.value = ''; 
         }
 
 
@@ -189,12 +189,8 @@ document.addEventListener("DOMContentLoaded", function () {
     // --- Handle suggestionSearchForm submission ---
     if (suggestionSearchForm) {
         suggestionSearchForm.addEventListener('submit', function(e) {
-            // When this form is submitted, it performs a GET request
-            // The views.py will handle the filtering based on these GET parameters
-            // For a more dynamic search, you might grab the main form's origin/destination inputs here
-            // and append them to the search form before submission, if desired.
+
             
-            // Example: Pre-fill suggestion search with current main form inputs if they have values
             if (originInput && originInput.value.trim() !== '') {
                 originSearchInput.value = originInput.value.trim();
             }
