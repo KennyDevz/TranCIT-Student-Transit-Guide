@@ -1,3 +1,5 @@
+// --- START OF FILE route_input/static/route_input/js/script.js ---
+
 document.addEventListener("DOMContentLoaded", function () {
     const routeForm = document.getElementById("routeForm");
     const originInput = document.querySelector('input[name="origin"]');
@@ -24,7 +26,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const originSearchInput = document.querySelector('#suggestionSearchForm input[name="origin_search"]');
     const destinationSearchInput = document.querySelector('#suggestionSearchForm input[name="destination_search"]');
     const transportTypeSearchSelect = document.getElementById('id_transport_type_search');
-    const jeepneyCodeSearchSelect = document.getElementById('id_jeepney_code_search'); // Jeepney Code search select
+    const jeepneyCodeSearchSelect = document.querySelector('#id_jeepney_code_search');
+
+    // NEW: Destination suggestions elements
+    const destinationSuggestionsContainer = document.getElementById('destinationSuggestions');
+    let debounceTimeout; // For delaying API calls
+
+    // NEW DIAGNOSTIC LOGS:
+    console.log("script.js loaded.");
+    console.log("destinationInput:", destinationInput);
+    console.log("destinationSuggestionsContainer:", destinationSuggestionsContainer);
 
 
     // --- Geolocation Detection ---
@@ -44,6 +55,7 @@ document.addEventListener("DOMContentLoaded", function () {
                             .then(response => response.json())
                             .then(data => {
                                 const detectedAddress = (data && data.display_name) ? data.display_name : `Lat: ${lat}, Lon: ${lon} (Address Not Found)`;
+                                // Redirect to refresh the page with detected origin info
                                 window.location.href = `${window.location.pathname}?origin_latitude=${lat}&origin_longitude=${lon}&origin_text=${encodeURIComponent(detectedAddress)}`;
                             })
                             .catch(error => {
@@ -82,9 +94,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // --- Control Hidden Code Input ---
         if (transportType === 'Jeepney') {
-            if (codeHiddenInput) codeHiddenInput.value = 'UNKNOWN'; 
+            if (codeHiddenInput) codeHiddenInput.value = 'UNKNOWN'; // Default code if not selected by user
         } else {
-            if (codeHiddenInput) codeHiddenInput.value = ''; 
+            if (codeHiddenInput) codeHiddenInput.value = ''; // Clear code if not Jeepney
         }
 
 
@@ -124,10 +136,12 @@ document.addEventListener("DOMContentLoaded", function () {
     if (originInput) {
         originInput.addEventListener('input', updateFareDisplay);
     }
+    // MODIFIED: Destination input now also triggers fare update
     if (destinationInput) {
         destinationInput.addEventListener('input', updateFareDisplay);
     }
     
+    // Initial fare display update
     updateFareDisplay();
 
     // --- Client-side form validation (for Add New Route form) ---
@@ -154,10 +168,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 document.getElementById("error-transport-type").textContent = "Please select a transportation type.";
                 valid = false;
             }
-            if (transportType === 'Jeepney' && (!code || code === 'UNKNOWN')) {
-                alert("Please select a Jeepney route from suggestions or ensure code is set.");
-                valid = false;
-            }
+            // TEMPORARILY COMMENTED OUT FOR EASIER DEVELOPMENT/TESTING:
+            // if (transportType === 'Jeepney' && (!code || code === 'UNKNOWN')) {
+            //     alert("Please select a Jeepney route from suggestions or ensure code is set.");
+            //     valid = false;
+            // }
             if ((transportType === 'Taxi' || transportType === 'Motorcycle') && (fare === "" || parseFloat(fare) < 0)) {
                 calculatedFareDisplay.style.color = "red";
                 calculatedFareDisplay.textContent = "Calculate fare!";
@@ -170,35 +185,91 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    // --- NEW: Destination Autocomplete Functionality ---
+    if (destinationInput && destinationSuggestionsContainer) { // Ensure both elements are found
+        destinationInput.addEventListener('input', function() {
+            clearTimeout(debounceTimeout);
+            const query = this.value.trim();
+
+            if (query.length < 3) { // Only search if query is at least 3 characters
+                destinationSuggestionsContainer.style.display = 'none';
+                return;
+            }
+
+            debounceTimeout = setTimeout(() => {
+                // Using Nominatim API for geocoding
+                // Added "Cebu City, Philippines" to improve relevance of results
+                fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}, Cebu City, Philippines&format=json&limit=5`)
+                    .then(response => response.json())
+                    .then(data => {
+                        destinationSuggestionsContainer.innerHTML = ''; // Clear previous suggestions
+                        if (data.length > 0) {
+                            data.forEach(item => {
+                                const suggestionItem = document.createElement('div');
+                                suggestionItem.classList.add('destination-suggestions-item');
+                                suggestionItem.textContent = item.display_name;
+                                suggestionItem.dataset.lat = item.lat;
+                                suggestionItem.dataset.lon = item.lon;
+                                destinationSuggestionsContainer.appendChild(suggestionItem);
+
+                                suggestionItem.addEventListener('click', function() {
+                                    // Update destination input with selected suggestion
+                                    destinationInput.value = this.textContent;
+                                    
+                                    // Set hidden latitude/longitude fields
+                                    destLatHidden.value = this.dataset.lat;
+                                    destLonHidden.value = this.dataset.lon;
+
+                                    // Hide suggestions
+                                    destinationSuggestionsContainer.style.display = 'none';
+                                    
+                                    // MODIFIED: Redirect to update the map with the new destination
+                                    // We are now sending the selected destination's coordinates and text
+                                    const currentOriginLat = originLatHidden.value || '';
+                                    const currentOriginLon = originLonHidden.value || '';
+                                    const currentOriginText = encodeURIComponent(originInput.value || '');
+
+                                    window.location.href = `${window.location.pathname}?origin_latitude=${currentOriginLat}&origin_longitude=${currentOriginLon}&origin_text=${currentOriginText}&destination_latitude=${this.dataset.lat}&destination_longitude=${this.dataset.lon}&destination_text=${encodeURIComponent(this.textContent)}`;
+                                });
+                            });
+                            destinationSuggestionsContainer.style.display = 'block'; // Show suggestions
+                        } else {
+                            destinationSuggestionsContainer.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error fetching destination suggestions:", error);
+                        destinationSuggestionsContainer.style.display = 'none';
+                    });
+            }, 500); // Debounce time: 500ms
+        });
+
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!destinationInput.contains(event.target) && !destinationSuggestionsContainer.contains(event.target)) {
+                destinationSuggestionsContainer.style.display = 'none';
+            }
+        });
+    }
+    // --- END NEW: Destination Autocomplete Functionality ---
+
+
     // --- Handle View on Map button clicks (for suggestions) ---
     document.querySelectorAll('.view-journey-on-map-btn').forEach(button => {
         button.addEventListener('click', function() {
-            const originLat = this.dataset.originLat;
-            const originLon = this.dataset.originLon;
-            const destLat = this.dataset.destLat;
-            const destLon = this.dataset.destLon;
-            const routeCode = this.dataset.routeCode;
-            const transportType = this.dataset.transportType;
-            const routeOrigin = this.dataset.routeOrigin;
-            const routeDestination = this.dataset.routeDestination;
+            const routeId = this.dataset.routeId; // Get the route ID from data-route-id
             
-            window.location.href = `${window.location.pathname}?origin_latitude=${originLat}&origin_longitude=${originLon}&destination_latitude=${destLat}&destination_longitude=${destLon}&route_to_highlight_code=${encodeURIComponent(routeCode)}&route_to_highlight_type=${encodeURIComponent(transportType)}&route_to_highlight_origin=${encodeURIComponent(routeOrigin)}&route_to_highlight_destination=${encodeURIComponent(routeDestination)}`;
+            // Construct the URL with the route ID for highlighting
+            // We're simplifying the URL here since views.py will retrieve full route details by ID
+            // Also, preserve current origin if it exists on the page
+            const currentOriginLat = originLatHidden.value || '';
+            const currentOriginLon = originLonHidden.value || '';
+            const currentOriginText = encodeURIComponent(originInput.value || '');
+
+            window.location.href = `${window.location.pathname}?highlight_route_id=${routeId}&origin_latitude=${currentOriginLat}&origin_longitude=${currentOriginLon}&origin_text=${currentOriginText}`;
         });
     });
 
-    // --- Handle suggestionSearchForm submission ---
-    if (suggestionSearchForm) {
-        suggestionSearchForm.addEventListener('submit', function(e) {
-
-            
-            if (originInput && originInput.value.trim() !== '') {
-                originSearchInput.value = originInput.value.trim();
-            }
-            if (destinationInput && destinationInput.value.trim() !== '') {
-                destinationSearchInput.value = destinationInput.value.trim();
-            }
-            // Let the form submit naturally
-        });
-    }
-
 });
+
+// --- END OF FILE route_input/static/route_input/js/script.js ---
