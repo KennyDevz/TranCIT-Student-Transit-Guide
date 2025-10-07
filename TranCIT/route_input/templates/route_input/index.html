@@ -1,3 +1,5 @@
+{# --- START OF FILE route_input/templates/route_input/index.html --- #}
+
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
@@ -6,6 +8,46 @@
   <title>TranCIT Prototype</title>
   <link rel="stylesheet" href="{% static 'route_input/css/styles.css' %}">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  {# Folium's CSS will be injected by Django's {{ map|safe }} #}
+  {# NEW: Add a small style for the suggestions container for now #}
+  <style>
+    .destination-input-group { /* MODIFIED: This group now primarily handles the input and suggestions */
+        position: relative; /* Needed for absolute positioning of suggestions */
+    }
+    .destination-input-group .form-control {
+        width: 100%; /* Ensure input takes full width */
+    }
+    .destination-suggestions {
+        position: absolute;
+        background-color: #333; /* Dark background */
+        border: 1px solid #555;
+        max-height: 200px;
+        overflow-y: auto;
+        width: calc(100% - 2px); /* Match input width minus border */
+        left: 0; /* Align with the start of the input */
+        top: 100%; /* Position below the input */
+        z-index: 1000; /* Ensure it appears above other elements */
+        color: #eee;
+        box-sizing: border-box; /* Include padding and border in the element's total width and height */
+    }
+    .destination-suggestions-item {
+        padding: 8px 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #444;
+    }
+    .destination-suggestions-item:hover {
+        background-color: #555;
+    }
+    .destination-suggestions-item:last-child {
+        border-bottom: none;
+    }
+    /* NEW: Style for the search button below the destination input */
+    #searchDestinationBtn {
+        width: 100%; /* Make it full width */
+        margin-top: 5px; /* Add some space above it */
+        box-sizing: border-box; /* Include padding and border in the element's total width and height */
+    }
+  </style>
 </head>
 <body>
 
@@ -38,7 +80,11 @@
           </span>
 
           <label for="{{ form.destination.id_for_label }}">Destination (Text)</label>
-          {{ form.destination }}
+          <div class="destination-input-group"> {# Wrapper for input and suggestions #}
+            {{ form.destination }}
+            <div id="destinationSuggestions" class="destination-suggestions" style="display: none;"></div>
+          </div>
+          <button type="button" id="searchDestinationBtn" class="btn btn-sm">Search</button> {# MOVED: Search button #}
           <span class="error" id="error-destination">
             {% if form.destination.errors %}{{ form.destination.errors }}{% endif %}
           </span>
@@ -95,9 +141,8 @@
       </div>
     </main>
 
-    <!-- Suggestions (Redo from ground up - Google Maps style) -->
     <aside class="suggestions">
-      <h3>Suggested Routes</h3>
+      <h3>Jeepney Suggestions</h3>
       {# Search Form for Suggestions #}
       <form id="suggestionSearchForm" method="get" action="{% url 'routes_page' %}">
         <input type="text" name="origin_search" placeholder="Search Origin..." value="{{ search_origin|default_if_none:'' }}" class="form-control">
@@ -111,7 +156,7 @@
         <select name="jeepney_code_search" id="id_jeepney_code_search" class="form-control"> {# NEW Jeepney Code Search #}
             <option value="">All Codes</option>
             {% for code_value, code_label in form.code.field.choices %}
-                <option value="{{ code_value }}" {% if search_jeepney_code == code_value %}selected{% endif %}>{{ code_label }}</option>
+                <option value="{{ code_value }}" {% if search_jeepney_code == code_value %}selected{% endif %}>{{ choice_label }}</option>
             {% endfor %}
         </select>
         <button type="submit" class="btn">Search</button>
@@ -121,7 +166,8 @@
       <div id="dynamicSuggestions">
         {% if all_routes %}
           {% for route in all_routes %}
-            <div class="journey-card">
+            {# MODIFIED: Add 'highlighted-route' class if this route's ID matches the highlight_route_id from context #}
+            <div class="journey-card {% if route.id|stringformat:"s" == highlight_route_id %}highlighted-route{% endif %}">
                 <div class="journey-header">
                     <div class="journey-route-summary">
                         <span class="segment {% if route.transport_type == 'Jeepney' %}jeepney-segment{% else %}other-segment{% endif %}">
@@ -147,6 +193,7 @@
                     {% if route.distance_km %} <p class="journey-distance">{{ route.distance_km|floatformat:1 }} km</p> {% endif %}
                 </div>
                 <button type="button" class="btn btn-sm view-journey-on-map-btn"
+                        data-route-id="{{ route.id }}" {# NEW: Pass the route ID #}
                         data-origin-lat="{{ route.origin_latitude }}"
                         data-origin-lon="{{ route.origin_longitude }}"
                         data-dest-lat="{{ route.destination_latitude }}"
@@ -173,3 +220,4 @@
   <script src="{% static 'route_input/js/script.js' %}"></script>
 </body>
 </html>
+{# --- END OF FILE route_input/templates/route_input/index.html --- #}

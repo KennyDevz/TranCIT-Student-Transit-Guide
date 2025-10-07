@@ -1,5 +1,8 @@
+# --- START OF FILE route_input/models.py ---
+
 from django.db import models
 from decimal import Decimal
+import json # ADDED: Import json for handling JSON data
 
 class Route(models.Model):
     TRANSPORT_CHOICES = [
@@ -55,6 +58,13 @@ class Route(models.Model):
         null=True, blank=True,
     )
 
+    # NEW FIELD: To store the actual path coordinates for plotting
+    # This will store a JSON array of [lat, lon] points.
+    route_path_coords = models.TextField(
+        blank=True,
+        help_text="JSON array of [[lat, lon], ...] points defining the route path. For Jeepneys."
+    )
+
     distance_km = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     travel_time_minutes = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     fare = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -70,3 +80,14 @@ class Route(models.Model):
         if self.code and self.transport_type == 'Jeepney':
             return f"[{self.code}] {self.origin} to {self.destination} ({self.transport_type})"
         return f"{self.origin} to {self.destination} ({self.transport_type})"
+
+    # NEW HELPER METHOD: To easily get path coordinates as a Python list
+    def get_path_coords(self):
+        if self.route_path_coords:
+            try:
+                return json.loads(self.route_path_coords)
+            except json.JSONDecodeError:
+                return []
+        return []
+
+# --- END OF FILE route_input/models.py ---
