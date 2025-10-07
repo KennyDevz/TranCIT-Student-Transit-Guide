@@ -66,31 +66,67 @@ body {
   transform: translateX(-50%);
 }
 
-.sidebar {
+/* Unified Sidebar Styles for Both Left and Right Panels */
+.sidebar,
+.suggestions {
   width: 20%;
   background: #f4f4f4;
   padding: 15px;
   box-sizing: border-box;
-  border-right: 1px solid #ddd;
   overflow-y: auto;
 }
 
-.sidebar h3 {
-  margin-top: 0;
+.sidebar {
+  border-right: 1px solid #ddd;
 }
 
-.sidebar label {
+.suggestions {
+  border-left: 1px solid #ddd;
+}
+
+.sidebar h3,
+.suggestions h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.sidebar h4,
+.suggestions h4 {
+  margin-top: 15px;
+  color: #555;
+}
+
+.sidebar label,
+.suggestions label {
   display: block;
   margin-top: 10px;
+  color: #333;
+  font-weight: normal;
 }
 
 .sidebar input,
 .sidebar select,
-.sidebar textarea {
+.sidebar textarea,
+.suggestions input,
+.suggestions select,
+.suggestions textarea {
   width: 100%;
   padding: 6px;
   margin-top: 4px;
   box-sizing: border-box;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.sidebar input:focus,
+.sidebar select:focus,
+.sidebar textarea:focus,
+.suggestions input:focus,
+.suggestions select:focus,
+.suggestions textarea:focus {
+  border-color: #4CAF50;
+  outline: none;
 }
 
 .btn {
@@ -101,6 +137,12 @@ body {
   cursor: pointer;
   background: #ddd;
   border-radius: 4px;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.btn:hover {
+  background: #ccc;
 }
 
 .btn.primary {
@@ -108,6 +150,23 @@ body {
   color: white;
 }
 
+.btn.primary:hover {
+  background: #45a049;
+}
+
+.btn.btn-sm {
+  padding: 6px 10px;
+  font-size: 13px;
+  margin-top: 5px;
+  background-color: #45a049;
+  color: white;
+}
+
+.btn.btn-sm:hover {
+  background-color: #326c35;
+}
+
+/* Map Area */
 .map-area {
   flex: 1;
   position: relative;
@@ -159,196 +218,218 @@ body {
   z-index: 999;
 }
 
-.suggestions {
-  width: 20%;
-  background-color: #f8f9fa;
-  padding: 1.5rem;
-  box-sizing: border-box;
-  border-left: 1px solid #ddd;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.suggestions h3 {
-  color: #2c3e50;
-  margin-top: 0;
-  margin-bottom: 1rem;
-  font-size: 1.5rem;
-}
-
 #suggestionSearchForm {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-#suggestionSearchForm input,
-#suggestionSearchForm select,
-#suggestionSearchForm .btn {
-    width: 100%;
-    padding: 0.75rem;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-    font-size: 0.9rem;
-    box-sizing: border-box;
-}
-
-#suggestionSearchForm .btn {
-    background-color: #3498db;
-    color: white;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-#suggestionSearchForm .btn:hover {
-    background-color: #2980b9;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #ddd;
 }
 
 #dynamicSuggestions {
-    max-height: 70vh;
-    overflow-y: auto;
-    border-top: 1px solid #eee;
-    padding-top: 1rem;
+  margin-top: 15px;
 }
 
 .journey-card {
-    background-color: white;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    transition: transform 0.2s, box-shadow 0.2s;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 10px;
+  transition: box-shadow 0.2s;
 }
 
 .journey-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
 .journey-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
 .journey-route-summary {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .segment {
-    background-color: #e9ecef;
-    border-radius: 4px;
-    padding: 0.3rem 0.6rem;
-    font-size: 0.85rem;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
+  background-color: #e9ecef;
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .jeepney-segment {
-    background-color: #e0f2f7;
-    color: #007bff;
+  background-color: #e0f2f7;
+  color: #007bff;
 }
 
-.walk-segment {
-    background-color: #e2f0d9;
-    color: #28a745;
-}
 .other-segment {
-    background-color: #fff3cd;
-    color: #ffc107;
-}
-
-.segment-separator {
-    color: #6c757d;
-    font-weight: normal;
-    margin: 0 0.2rem;
+  background-color: #fff3cd;
+  color: #856404;
 }
 
 .journey-time {
-    font-weight: bold;
-    color: #2c3e50;
-    font-size: 1.1rem;
+  font-weight: bold;
+  color: #333;
+  font-size: 14px;
 }
 
 .journey-details p {
-    margin: 0.2rem 0;
-    color: #555;
-}
-
-.journey-schedule, .journey-fare, .journey-distance {
-    font-size: 0.9rem;
+  margin: 4px 0;
+  color: #555;
+  font-size: 13px;
 }
 
 .journey-fare {
-    font-weight: bold;
-    color: #27ae60;
+  font-weight: bold;
+  color: #4CAF50;
 }
 
 .view-journey-on-map-btn {
-    background-color: #f39c12;
-    color: white;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    margin-top: 1rem;
-    width: 100%;
-    transition: background-color 0.2s;
+  background-color: #f39c12;
+  color: white;
+  padding: 6px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  margin-top: 8px;
+  width: 100%;
+  transition: background-color 0.2s;
 }
 
 .view-journey-on-map-btn:hover {
-    background-color: #e67e22;
+  background-color: #e67e22;
 }
 
+/* Success and Error Messages */
 .success-message {
-    color: green;
-    background-color: #e6ffe6;
-    border: 1px solid green;
-    padding: 0.5rem;
-    margin-top: 10px;
-    border-radius: 4px;
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  padding: 8px;
+  margin-top: 10px;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
 .error-message {
-    color: red;
-    background-color: #ffe6e6;
-    border: 1px solid red;
-    padding: 0.5rem;
-    margin-top: 10px;
-    border-radius: 4px;
+  color: #721c24;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 8px;
+  margin-top: 10px;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
-.form-control {
+/* Error spans below fields - minimal styling */
+.error,
+span.error {
+  color: #dc3545;
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  margin-top: 2px;
+  display: block;
+  font-size: 11px;
+  min-height: 0;
+}
+
+/* Remove red background boxes from error containers */
+.sidebar .error,
+.suggestions .error {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* Saved Locations Section */
+.saved-locations {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #ddd;
+}
+
+.saved-locations h4 {
+  margin-top: 0;
+  font-size: 14px;
+}
+
+#savedList {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0 0;
+}
+
+#savedList li {
+  padding: 6px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+/* Fare Display */
+#fareDisplay {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+#fareDisplay label {
+  margin: 0;
+  font-weight: bold;
+  color: #333;
+}
+
+#calculatedFare {
+  margin: 5px 0 0 0;
+  font-size: 16px;
+  font-weight: bold;
+  color: #4CAF50;
+}
+
+/* Responsive Layout */
+@media (max-width: 1024px) {
+  .container {
+    flex-direction: column;
+  }
+
+  .sidebar,
+  .map-area,
+  .suggestions {
     width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 1rem;
-    box-sizing: border-box;
-}
-.form-control:focus {
-    border-color: #3498db;
-    outline: none;
+    height: auto;
+    border: none;
+  }
+
+  .map-area {
+    min-height: 300px;
+  }
 }
 
-.btn.btn-sm {
-    padding: 0.5rem 1rem;
-    font-size: 0.85rem;
-    margin-top: 5px;
-    background-color: #6c757d;
-    color: white;
-}
-.btn.btn-sm:hover {
-    background-color: #5a6268;
+@media (max-width: 480px) {
+  body {
+    font-size: 14px;
+  }
+
+  .btn {
+    padding: 6px;
+    font-size: 13px;
+  }
+
+  .map-area {
+    min-height: 200px;
+  }
 }

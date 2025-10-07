@@ -26,7 +26,7 @@
 
           {# Removed Jeepney Code dropdown from this form as per instruction #}
 
-          <label for="{{ form.origin.id_for_label }}">Current Location (Text)</label>
+          <label for="{{ form.origin.id_for_label }}">Current Location</label>
           <input type="text" name="{{ form.origin.name }}" id="{{ form.origin.id_for_label }}"
                  placeholder="{{ form.origin.field.widget.attrs.placeholder }}"
                  value="{{ get_origin_text|default_if_none:form.origin.value }}"
@@ -37,7 +37,7 @@
             {% if form.origin.errors %}{{ form.origin.errors }}{% endif %}
           </span>
 
-          <label for="{{ form.destination.id_for_label }}">Destination (Text)</label>
+          <label for="{{ form.destination.id_for_label }}">Destination</label>
           {{ form.destination }}
           <span class="error" id="error-destination">
             {% if form.destination.errors %}{{ form.destination.errors }}{% endif %}
@@ -96,12 +96,17 @@
     </main>
 
     <!-- Suggestions (Redo from ground up - Google Maps style) -->
+    <!-- Right Panel (for Suggesting Routes) -->
     <aside class="suggestions">
       <h3>Suggested Routes</h3>
       {# Search Form for Suggestions #}
       <form id="suggestionSearchForm" method="get" action="{% url 'routes_page' %}">
+        <label for="{{ form.origin.id_for_label }}">Current Location</label>
         <input type="text" name="origin_search" placeholder="Search Origin..." value="{{ search_origin|default_if_none:'' }}" class="form-control">
+        <label for="{{ form.destination.id_for_label }}">Destination</label>
         <input type="text" name="destination_search" placeholder="Search Destination..." value="{{ search_destination|default_if_none:'' }}" class="form-control">
+        
+        <label for="{{ form.transport_type.id_for_label }}">Transportation Type</label>
         <select name="transport_type_search" id="id_transport_type_search" class="form-control">
             <option value="">All Types</option>
             {% for choice_value, choice_label in form.transport_type.field.choices %}
@@ -109,12 +114,12 @@
             {% endfor %}
         </select>
         <select name="jeepney_code_search" id="id_jeepney_code_search" class="form-control"> {# NEW Jeepney Code Search #}
-            <option value="">All Codes</option>
+            <option value="">All Jeepney Codes</option>
             {% for code_value, code_label in form.code.field.choices %}
                 <option value="{{ code_value }}" {% if search_jeepney_code == code_value %}selected{% endif %}>{{ code_label }}</option>
             {% endfor %}
         </select>
-        <button type="submit" class="btn">Search</button>
+        <button type="submit" class="btn primary">Search</button>
       </form>
       <hr>
 
