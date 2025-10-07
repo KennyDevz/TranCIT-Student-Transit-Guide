@@ -38,21 +38,39 @@ body {
 }
 
 .topNav li a {
-  display: block;
-  color: #333;
-  text-align: center;
-  padding: 14px 16px;
-  text-decoration: none;
-  line-height: 22px;
+    display: block;
+    color: #333;
+    text-align: center;
+    padding: 14px 16px;
+    text-decoration: none;
+    line-height: 22px;
 }
 
 .topNav li a:hover {
-  background-color: #ddd;
+  background-color: transparent; 
+}
+
+.topNav li:not(:first-child) a:hover {
+  background-color: #ddd; 
 }
 
 .topNav li a.active {
-  background-color: #4CAF50;
-  color: white;
+    background-color: #4CAF50;
+    color: white;
+    height: 50px;
+    width: 65px;
+    padding: 0;
+    display: flex; 
+    align-items: center;
+    justify-content: center;
+    line-height: normal; 
+}
+
+.topNav li a.active img {
+    height: 40px;
+    width: auto;
+    padding: 5px; 
+    box-sizing: content-box;
 }
 
 .topNav input[type=text] {
