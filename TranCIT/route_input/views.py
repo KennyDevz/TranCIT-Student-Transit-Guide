@@ -1,5 +1,3 @@
-# --- START OF FILE route_input/views.py ---
-
 from django.shortcuts import render, redirect
 from django.db import DatabaseError
 from django.db.models import Q
@@ -391,5 +389,3 @@ def index(request):
         'highlight_route_id': route_to_highlight_id, # Pass this to JS to manage map interaction (and to template for class)
     }
     return render(request, 'route_input/index.html', context)
-
-# --- END OF FILE route_input/views.py ---

@@ -38,39 +38,21 @@ body {
 }
 
 .topNav li a {
-    display: block;
-    color: #333;
-    text-align: center;
-    padding: 14px 16px;
-    text-decoration: none;
-    line-height: 22px;
+  display: block;
+  color: #333;
+  text-align: center;
+  padding: 14px 16px;
+  text-decoration: none;
+  line-height: 22px;
 }
 
 .topNav li a:hover {
-  background-color: transparent; 
-}
-
-.topNav li:not(:first-child) a:hover {
-  background-color: #ddd; 
+  background-color: #ddd;
 }
 
 .topNav li a.active {
-    background-color: #4CAF50;
-    color: white;
-    height: 50px;
-    width: 65px;
-    padding: 0;
-    display: flex; 
-    align-items: center;
-    justify-content: center;
-    line-height: normal; 
-}
-
-.topNav li a.active img {
-    height: 40px;
-    width: auto;
-    padding: 5px; 
-    box-sizing: content-box;
+  background-color: #4CAF50;
+  color: white;
 }
 
 .topNav input[type=text] {
@@ -176,12 +158,12 @@ body {
   padding: 6px 10px;
   font-size: 13px;
   margin-top: 5px;
-  background-color: #45a049;
+  background-color: #6c757d;
   color: white;
 }
 
 .btn.btn-sm:hover {
-  background-color: #326c35;
+  background-color: #5a6268;
 }
 
 /* Map Area */
@@ -236,16 +218,19 @@ body {
   z-index: 999;
 }
 
+/* Search Form Styling */
 #suggestionSearchForm {
   margin-bottom: 15px;
   padding-bottom: 15px;
   border-bottom: 1px solid #ddd;
 }
 
+/* Suggestions List Section */
 #dynamicSuggestions {
   margin-top: 15px;
 }
 
+/* Journey Cards - Simplified to Match Sidebar Style */
 .journey-card {
   background-color: white;
   border: 1px solid #ddd;
@@ -416,6 +401,58 @@ span.error {
   font-size: 16px;
   font-weight: bold;
   color: #4CAF50;
+}
+
+/* Destination Input Group with Suggestions */
+.destination-input-group {
+  position: relative;
+}
+
+.destination-input-group .form-control {
+  width: 100%;
+}
+
+.destination-suggestions {
+  position: absolute;
+  background-color: #333;
+  border: 1px solid #555;
+  max-height: 200px;
+  overflow-y: auto;
+  width: calc(100% - 2px);
+  left: 0;
+  top: 100%;
+  z-index: 1000;
+  color: #eee;
+  box-sizing: border-box;
+  display: none;
+}
+
+.destination-suggestions-item {
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #444;
+}
+
+.destination-suggestions-item:hover {
+  background-color: #555;
+}
+
+.destination-suggestions-item:last-child {
+  border-bottom: none;
+}
+
+/* Search Destination Button */
+#searchDestinationBtn {
+  width: 100%;
+  margin-top: 5px;
+  box-sizing: border-box;
+}
+
+/* Highlighted Route Card */
+.highlighted-route {
+  background-color: #fff3cd !important;
+  border: 2px solid #f39c12 !important;
+  box-shadow: 0 4px 8px rgba(243, 156, 18, 0.3) !important;
 }
 
 /* Responsive Layout */
