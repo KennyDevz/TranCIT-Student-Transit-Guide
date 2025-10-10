@@ -13,7 +13,7 @@ def login_view(request):
         if user is not None:
             login(request, user)
             messages.success(request, f'Welcome back, {username}!')
-            return redirect('route_input:routes_page')
+            return redirect('/routes/')
         else:
             messages.error(request, 'Invalid username or password.')
     
@@ -28,15 +28,15 @@ def register_view(request):
         
         if password != password_confirm:
             messages.error(request, 'Passwords do not match.')
-            return render(request, 'login_registration/register.html')
+            return render(request, 'login_registration/login.html', {'show_register': True})
         
         if User.objects.filter(username=username).exists():
             messages.error(request, 'Username already exists.')
-            return render(request, 'login_registration/register.html')
+            return render(request, 'login_registration/login.html', {'show_register': True})
         
         if User.objects.filter(email=email).exists():
             messages.error(request, 'Email already registered.')
-            return render(request, 'login_registration/register.html')
+            return render(request, 'login_registration/login.html', {'show_register': True})
         
         user = User.objects.create_user(username=username, email=email, password=password)
         user.save()
@@ -44,7 +44,7 @@ def register_view(request):
         messages.success(request, 'Account created successfully! Please log in.')
         return redirect('login_registration:login')
     
-    return render(request, 'login_registration/register.html')
+    return render(request, 'login_registration/login.html', {'show_register': True})
 
 def logout_view(request):
     logout(request)
