@@ -4,47 +4,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TranCIT - Login</title>
+    <title>TranCIT - {% if show_register %}Register{% else %}Login{% endif %}</title>
     <link rel="stylesheet" href="{% static 'login_registration/css/styles.css' %}">
 </head>
 <body>
-    <div class="container">
-        <div class="logo">
-            <h1>TranCIT</h1>
-            <p>Student Transit Guide</p>
+    
+    <div class="auth-wrapper {% if show_register %}register-active{% endif %}" id="authWrapper">
+         <div class="forms-slider">
+            <div class="form-panel">
+                <div class="form-content">
+                    <div class="form-logo">
+                        <h1>TranCIT</h1>
+                        <p>Welcome Back!</p>
+                    </div>
+
+                    {% if messages and not show_register %}
+                    <div class="form-messages">
+                        {% for message in messages %}
+                        <div class="message {{ message.tags }}">
+                            {{ message }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'login_registration:login' %}">
+                        {% csrf_token %}
+                        
+                        <div class="input-group">
+                            <label for="loginUsername">Username</label>
+                            <input 
+                                type="text" 
+                                id="loginUsername" 
+                                name="username" 
+                                autocomplete="username"
+                                required>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="loginPassword">Password</label>
+                            <input 
+                                type="password" 
+                                id="loginPassword" 
+                                name="password" 
+                                autocomplete="current-password"
+                                required>
+                        </div>
+
+                        <button type="submit" class="submit-btn">Login</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="form-panel">
+                <div class="form-content">
+                    <div class="form-logo">
+                        <h1>TranCIT</h1>
+                        <p>Create Your Account</p>
+                    </div>
+
+                    {% if messages and show_register %}
+                    <div class="form-messages">
+                        {% for message in messages %}
+                        <div class="message {{ message.tags }}">
+                            {{ message }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'login_registration:register' %}">
+                        {% csrf_token %}
+                        
+                        <div class="input-group">
+                            <label for="registerUsername">Username</label>
+                            <input 
+                                type="text" 
+                                id="registerUsername" 
+                                name="username" 
+                                autocomplete="username"
+                                required>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="registerEmail">Email</label>
+                            <input 
+                                type="email" 
+                                id="registerEmail" 
+                                name="email" 
+                                autocomplete="email"
+                                required>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="registerPassword">Password</label>
+                            <input 
+                                type="password" 
+                                id="registerPassword" 
+                                name="password" 
+                                autocomplete="new-password"
+                                required>
+                            <span class="input-hint">Must be at least 8 characters</span>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="registerPasswordConfirm">Confirm Password</label>
+                            <input 
+                                type="password" 
+                                id="registerPasswordConfirm" 
+                                name="password_confirm" 
+                                autocomplete="new-password"
+                                required>
+                        </div>
+
+                        <button type="submit" class="submit-btn">Create Account</button>
+                    </form>
+                </div>
+            </div>
+
         </div>
 
-        {% if messages %}
-        <div class="messages">
-            {% for message in messages %}
-            <div class="alert alert-{{ message.tags }}">
-                {{ message }}
+        <div class="overlay-wrapper">
+            <div class="overlay-slider">
+                <div class="overlay-panel">
+                    <h2>Welcome!</h2>
+                    <p>Please enter the needed information</p>
+                    <div class="divider">──────────────  or  ──────────────</div>
+                    <p>Have an account already?</p>
+                    <button type="button" class="overlay-btn" id="showLogin">Login</button>
+                </div>
+
+                <div class="overlay-panel">
+                    <h2>Hello!</h2>
+                    <p>Enter your personal details and start your journey with us</p>
+                    <div class="divider">──────────────  or  ──────────────</div>
+                    <p>Don't have an account? Sign up now for free!</p>
+                    <button type="button" class="overlay-btn" id="showRegister">Sign Up</button>
+                </div>
             </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        <form method="post">
-            {% csrf_token %}
-            
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-
-            <button type="submit" class="btn">Login</button>
-        </form>
-
-        <div class="divider">───────  or  ───────</div>
-
-        <div class="links">
-            <p>Don't have an account? <a href="{% url 'login_registration:register' %}">Register here</a></p>
         </div>
     </div>
+
+    <script src="{% static 'login_registration/js/animation.js' %}"></script>
 </body>
 </html>

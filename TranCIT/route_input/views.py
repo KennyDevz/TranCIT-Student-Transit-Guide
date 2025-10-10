@@ -1,14 +1,17 @@
 from django.shortcuts import render, redirect
 from django.db import DatabaseError
 from django.db.models import Q
-from .forms import RouteForm
-import folium
-from decimal import Decimal, InvalidOperation
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-import json
+from decimal import Decimal, InvalidOperation
+from .forms import RouteForm
 from .models import Route # Ensure Route model is imported
+
+import folium
+import json
+
+from django.contrib.auth.decorators import login_required
 
 # Init geolocator
 geolocator = Nominatim(user_agent="trancit_app_geocoder")
@@ -55,6 +58,7 @@ def calculate_fare(transport_type, distance_km, travel_time_minutes):
     return None
 
 # Main Index View
+@login_required(login_url='/') #must login before seeing dashboard
 def index(request):
     error_message = None
     success_message = None
