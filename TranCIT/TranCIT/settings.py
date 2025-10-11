@@ -15,6 +15,9 @@ import os
 from dotenv import load_dotenv
 import dj_database_url
 import sys 
+from decouple import config
+
+ORS_API_KEY = config('ORS_API_KEY')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
