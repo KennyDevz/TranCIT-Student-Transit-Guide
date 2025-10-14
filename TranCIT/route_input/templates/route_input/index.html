@@ -9,6 +9,7 @@
 </head>
 <body>
 
+  <!-- topnav / header -->
   <div class="topNav">
     <ul>
       <li>
@@ -17,11 +18,14 @@
         </a>
       </li>
       <input type="text" placeholder="Search..">
-    </ul>
+      <li class="logout-container">
+        <a href="{% url 'logout' %}" class="logout-btn" onclick="handleLogout(event)">
+          Log out
+        </a>
+      </li>
   </div>
 
   <div class="container">
-
     <!-- Left Panel (User's Route Planning) -->
     <aside class="sidebar">
       <h3>Plan Your Route</h3>

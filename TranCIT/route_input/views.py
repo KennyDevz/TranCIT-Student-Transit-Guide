@@ -27,6 +27,7 @@ from django.conf import settings
 import json  # For storing/retrieving route path coordinates
 import logging
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import logout
 
 # Init geolocator
 geolocator = Nominatim(user_agent="trancit_app_geocoder")
@@ -245,9 +246,13 @@ def calculate_fare(transport_type, distance_km, travel_time_minutes):
         
     return None
 
-@login_required(login_url='/') #must login before seeing dashboard
+def logout_view(request):
+    logout(request)
+    return redirect('/')
 
 # Main Index View
+
+@login_required(login_url='/') #must login before seeing dashboard
 def index(request):
     error_message = None
     success_message = None
