@@ -44,10 +44,56 @@ document.addEventListener('DOMContentLoaded', () => {
         window.history.replaceState({}, '', newUrl);
     };
 
+    // === PANEL TOGGLE FUNCTIONALITY (NEW) ===
+    const suggestionsPanel = $('.suggestions');
+    const mapArea = $('.map-area');
+    
+    // Create toggle button
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'panel-toggle-btn';
+    toggleBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+    toggleBtn.setAttribute('aria-label', 'Toggle suggestions panel');
+    toggleBtn.title = 'Toggle suggestions panel';
+    document.body.appendChild(toggleBtn);
+    
+    // Load saved state from sessionStorage
+    const savedState = sessionStorage.getItem('panelCollapsed');
+    if (savedState === 'true') {
+        suggestionsPanel?.classList.add('collapsed');
+        toggleBtn.classList.add('collapsed');
+        mapArea?.classList.add('expanded');
+    }
+    
+    // Toggle functionality
+    toggleBtn.addEventListener('click', () => {
+        const isCollapsed = suggestionsPanel?.classList.toggle('collapsed');
+        toggleBtn.classList.toggle('collapsed');
+        mapArea?.classList.toggle('expanded');
+        
+        // Save state
+        sessionStorage.setItem('panelCollapsed', isCollapsed);
+        
+        // Prevent rapid clicks during animation
+        toggleBtn.style.pointerEvents = 'none';
+        setTimeout(() => {
+            toggleBtn.style.pointerEvents = 'auto';
+        }, 300);
+    });
+    
+    // Keyboard accessibility
+    toggleBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleBtn.click();
+        }
+    });
+
     // === Toggle Navigate Button ===
     function toggleNavigateButton() {
-        const hasOrigin = originLat.value && originLon.value;
-        const hasDestination = destLat.value && destLon.value;
+        if (!navigateBtn) return;
+        
+        const hasOrigin = originLat?.value && originLon?.value;
+        const hasDestination = destLat?.value && destLon?.value;
         const enabled = hasOrigin && hasDestination;
 
         navigateBtn.disabled = !enabled;
@@ -78,43 +124,46 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('pageshow', syncInputsFromURL);
 
     // === Tooltip for Navigate Button ===
-    const tooltip = document.createElement('div');
-    tooltip.textContent = 'Please pin both your origin and destination';
-    Object.assign(tooltip.style, {
-        position: 'absolute',
-        background: '#333',
-        color: '#fff',
-        padding: '6px 10px',
-        borderRadius: '6px',
-        fontSize: '12px',
-        whiteSpace: 'nowrap',
-        pointerEvents: 'none',
-        opacity: '0',
-        transition: 'opacity 0.2s'
-    });
-    document.body.appendChild(tooltip);
+    if (navigateBtn) {
+        const tooltip = document.createElement('div');
+        tooltip.textContent = 'Please pin both your origin and destination';
+        Object.assign(tooltip.style, {
+            position: 'absolute',
+            background: '#333',
+            color: '#fff',
+            padding: '6px 10px',
+            borderRadius: '6px',
+            fontSize: '12px',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            opacity: '0',
+            transition: 'opacity 0.2s',
+            zIndex: '10000'
+        });
+        document.body.appendChild(tooltip);
 
-    const showTooltip = (e) => {
-        if (!navigateBtn.disabled) return;
-        tooltip.style.left = e.pageX + 15 + 'px';
-        tooltip.style.top = e.pageY - 35 + 'px';
-        tooltip.style.opacity = '1';
-    };
-    const hideTooltip = () => (tooltip.style.opacity = '0');
-    navigateBtn?.addEventListener('mousemove', showTooltip);
-    navigateBtn?.addEventListener('mouseleave', hideTooltip);
+        const showTooltip = (e) => {
+            if (!navigateBtn.disabled) return;
+            tooltip.style.left = e.pageX + 15 + 'px';
+            tooltip.style.top = e.pageY - 35 + 'px';
+            tooltip.style.opacity = '1';
+        };
+        const hideTooltip = () => (tooltip.style.opacity = '0');
+        navigateBtn.addEventListener('mousemove', showTooltip);
+        navigateBtn.addEventListener('mouseleave', hideTooltip);
+    }
 
     // === Map Pin Commands ===
     function sendPinCommand(mode) {
-        const iframe = document.querySelector('#map-container iframe');
+        const iframe = $('#map-container iframe');
         if (!iframe?.contentWindow) return alertMsg('Map not ready yet. Please wait.');
 
         const params = new URLSearchParams(window.location.search);
-        if (mode === 'origin' && destLat.value && destLon.value) {
+        if (mode === 'origin' && destLat?.value && destLon?.value) {
             params.set('destination_latitude', destLat.value);
             params.set('destination_longitude', destLon.value);
             params.set('destination_text', destinationInput.value);
-        } else if (mode === 'destination' && originLat.value && originLon.value) {
+        } else if (mode === 'destination' && originLat?.value && originLon?.value) {
             params.set('origin_latitude', originLat.value);
             params.set('origin_longitude', originLon.value);
             params.set('origin_text', originInput.value);
@@ -129,11 +178,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // === Navigate Route ===
     navigateBtn?.addEventListener('click', () => {
-        if (!originLat.value && !destLat.value)
+        if (!originLat?.value && !destLat?.value)
             return alertMsg('Please pin both your origin and destination.');
-        if (!originLat.value)
+        if (!originLat?.value)
             return alertMsg('Please pin your origin.');
-        if (!destLat.value)
+        if (!destLat?.value)
             return alertMsg('Please pin your destination.');
 
         window.location.href = `/routes/?${qs({
@@ -148,16 +197,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // === Fare Calculation ===
     function updateFare() {
-        const type = transportSelect?.value;
+        if (!transportSelect || !fareDisplay || !fareInput) return;
+        
+        const type = transportSelect.value;
         if (!type) return;
 
         fareDisplay.textContent = 'Php 0.00';
         fareInput.value = '0.00';
-        distInput.value = '';
-        timeInput.value = '';
+        if (distInput) distInput.value = '';
+        if (timeInput) timeInput.value = '';
 
         if (type === 'Jeepney') {
-            codeInput.value = 'UNKNOWN';
+            if (codeInput) codeInput.value = 'UNKNOWN';
             fareInput.value = '13.00';
             fareDisplay.textContent = 'Php ~13.00 (Fixed)';
             return;
@@ -171,8 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
             ? 40 + 13.5 * dist + 2 * time
             : 20 + 10 * dist;
 
-        distInput.value = dist.toFixed(2);
-        timeInput.value = time.toFixed(2);
+        if (distInput) distInput.value = dist.toFixed(2);
+        if (timeInput) timeInput.value = time.toFixed(2);
         fareInput.value = fare.toFixed(2);
         fareDisplay.textContent = `Php ${fare.toFixed(2)}`;
     }
@@ -187,12 +238,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // === Geolocation Detection ===
     detectBtn?.addEventListener('click', () => {
         if (!navigator.geolocation) return alertMsg('Geolocation not supported.');
+        if (!originInput) return;
+        
         originInput.value = 'Detecting location...';
 
         navigator.geolocation.getCurrentPosition(async pos => {
             const { latitude: lat, longitude: lon } = pos.coords;
-            originLat.value = lat;
-            originLon.value = lon;
+            if (originLat) originLat.value = lat;
+            if (originLon) originLon.value = lon;
             toggleNavigateButton();
 
             try {
@@ -206,10 +259,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     origin_longitude: lon,
                     origin_text: addr
                 };
-                if (destLat.value && destLon.value) {
+                if (destLat?.value && destLon?.value) {
                     params.destination_latitude = destLat.value;
                     params.destination_longitude = destLon.value;
-                    params.destination_text = destinationInput.value;
+                    params.destination_text = destinationInput?.value || '';
                 }
                 window.location.href = `${window.location.pathname}?${qs(params)}`;
             } catch {
@@ -218,60 +271,72 @@ document.addEventListener('DOMContentLoaded', () => {
         }, err => {
             console.error(err);
             alertMsg('Location detection failed.');
+            originInput.value = '';
         }, { enableHighAccuracy: true, timeout: 7000 });
     });
 
     // === Destination Autocomplete ===
-    let debounce;
-    destinationInput?.addEventListener('input', () => {
-        clearTimeout(debounce);
-        const query = destinationInput.value.trim();
-        if (query.length < 3) return (suggestionsContainer.style.display = 'none');
+    if (destinationInput && suggestionsContainer) {
+        let debounce;
+        destinationInput.addEventListener('input', () => {
+            clearTimeout(debounce);
+            const query = destinationInput.value.trim();
+            if (query.length < 3) {
+                suggestionsContainer.style.display = 'none';
+                return;
+            }
 
-        debounce = setTimeout(async () => {
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}, Cebu City, Philippines&format=json&limit=5`);
-                const results = await res.json();
+            debounce = setTimeout(async () => {
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}, Cebu City, Philippines&format=json&limit=5`);
+                    const results = await res.json();
 
-                suggestionsContainer.innerHTML = '';
-                if (!results.length) return (suggestionsContainer.style.display = 'none');
-
-                results.forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = 'destination-suggestions-item';
-                    div.textContent = item.display_name;
-
-                    div.addEventListener('click', () => {
-                        destinationInput.value = item.display_name;
-                        destLat.value = item.lat;
-                        destLon.value = item.lon;
+                    suggestionsContainer.innerHTML = '';
+                    if (!results.length) {
                         suggestionsContainer.style.display = 'none';
-                        toggleNavigateButton();
+                        return;
+                    }
 
-                        const params = {
-                            destination_latitude: item.lat,
-                            destination_longitude: item.lon,
-                            destination_text: item.display_name
-                        };
-                        if (originLat.value && originLon.value) {
-                            params.origin_latitude = originLat.value;
-                            params.origin_longitude = originLon.value;
-                            params.origin_text = originInput.value;
-                        }
-                        window.location.href = `${window.location.pathname}?${qs(params)}`;
+                    results.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'destination-suggestions-item';
+                        div.textContent = item.display_name;
+
+                        div.addEventListener('click', () => {
+                            destinationInput.value = item.display_name;
+                            if (destLat) destLat.value = item.lat;
+                            if (destLon) destLon.value = item.lon;
+                            suggestionsContainer.style.display = 'none';
+                            toggleNavigateButton();
+
+                            const params = {
+                                destination_latitude: item.lat,
+                                destination_longitude: item.lon,
+                                destination_text: item.display_name
+                            };
+                            if (originLat?.value && originLon?.value) {
+                                params.origin_latitude = originLat.value;
+                                params.origin_longitude = originLon.value;
+                                params.origin_text = originInput?.value || '';
+                            }
+                            window.location.href = `${window.location.pathname}?${qs(params)}`;
+                        });
+
+                        suggestionsContainer.appendChild(div);
                     });
+                    suggestionsContainer.style.display = 'block';
+                } catch (error) {
+                    console.error('Autocomplete error:', error);
+                    suggestionsContainer.style.display = 'none';
+                }
+            }, 400);
+        });
 
-                    suggestionsContainer.appendChild(div);
-                });
-                suggestionsContainer.style.display = 'block';
-            } catch {
+        // Close suggestions when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!suggestionsContainer.contains(e.target) && e.target !== destinationInput) {
                 suggestionsContainer.style.display = 'none';
             }
-        }, 400);
-    });
-
-    document.addEventListener('click', (e) => {
-        if (!suggestionsContainer.contains(e.target) && e.target !== destinationInput)
-            suggestionsContainer.style.display = 'none';
-    });
+        });
+    }
 });
