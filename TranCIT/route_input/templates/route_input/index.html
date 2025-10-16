@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>TranCIT Prototype</title>
+  <title>TranCIT</title>
   <link rel="stylesheet" href="{% static 'route_input/css/styles.css' %}">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
@@ -39,9 +39,21 @@
                value="{{ get_origin_text|default_if_none:form.origin.value }}"
                {% if form.origin.field.required %}required{% endif %}
                class="form-control">
+
+        <div class="pin-controls" style="margin-top: 10px;">
+          <button type="button" id="pinOriginBtn" class="btn btn-sm">
+            <i class="fa-solid fa-map-pin"></i> Pin Origin on Map
+          </button>
+          <button type="button" id="pinDestinationBtn" class="btn btn-sm">
+            <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
+          </button>
+        </div>
+
+        <div class="divider">──────────  or  ──────────</div>
         <button type="button" id="detectLocationBtn" class="btn btn-sm">
           <i class="fa-solid fa-location-crosshairs"></i> Detect My Location
         </button>
+        
         <span class="error" id="error-origin">
           {% if form.origin.errors %}{{ form.origin.errors }}{% endif %}
         </span>
@@ -67,7 +79,7 @@
 
         <!-- Add this block below -->
         <div class="form-actions" style="margin-top: 10px;">
-          <button type="submit" class="btn primary" id="navigateBtn">
+          <button type="button" class="btn primary" id="navigateBtn">
             <i class="fa-solid fa-route"></i> Navigate Route
           </button>
         </div>
@@ -157,6 +169,10 @@
 
     <!-- Map Area -->
     <main class="map-area">
+      <div id="map-loader" class="loader">
+        Loading map...
+      </div>
+
       <div id="map-container">
         {{ map|safe }}
       </div>
