@@ -10,31 +10,29 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from pathlib import Path
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
-import sys 
-from decouple import config
 
-ORS_API_KEY = config('ORS_API_KEY')
-
+# -------------------------------------------------------------------
+# Load environment variables properly
+# -------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-dotenv_path = BASE_DIR / '.env'
-load_dotenv(dotenv_path=dotenv_path) 
-
-DATABASE_URL = os.environ.get('DATABASE_URL')
+ORS_API_KEY = os.getenv("ORS_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
-            conn_max_age=600,  
-            ssl_require=True   
+            conn_max_age=1800,
+            ssl_require=True
         )
     }
-    print("INFO: Using Supabase PostgreSQL database.") 
+    print("INFO: Using Supabase PostgreSQL database.")
 else:
     DATABASES = {
         'default': {
@@ -42,7 +40,7 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-    print("WARNING: DATABASE_URL not set. Falling back to local SQLite.") # Added for debugging
+    print("⚠️  DATABASE_URL not set. Using SQLite fallback.")
 
 
 # Quick-start development settings - unsuitable for production

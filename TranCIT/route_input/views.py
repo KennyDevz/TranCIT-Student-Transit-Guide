@@ -1,698 +1,731 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
+from django.core.cache import cache
+from django.conf import settings
 from django.db import DatabaseError
 from django.db.models import Q
-from .forms import RouteForm, JeepneySuggestionForm
-import folium
-from .models import Route
+from django.views.decorators.http import require_POST, require_GET
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import logout
+from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-
-from django.http import JsonResponse, HttpResponseForbidden, HttpResponseBadRequest
-from django.views.decorators.http import require_POST 
-from django.shortcuts import get_object_or_404 
-from .models import SavedRoute 
-from django.utils import timezone
-
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
-from django.http import JsonResponse
-from .models import SavedRoute, JEEPNEY_CODE_CHOICES
-
 import openrouteservice
-from openrouteservice import convert
-from django.conf import settings
-
-import json  # For storing/retrieving route path coordinates
+import json
 import logging
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth import logout
+import folium
 
-# Init geolocator
-geolocator = Nominatim(user_agent="trancit_app_geocoder")
-# Initialize the ORS client
-client = openrouteservice.Client(key=settings.ORS_API_KEY)
-# Optional: Setup logging for debugging
+from .forms import RouteForm, JeepneySuggestionForm
+from .models import Route, SavedRoute, JEEPNEY_CODE_CHOICES
+
+
+# -----------------------------
+# Configuration / Constants
+# -----------------------------
 logger = logging.getLogger(__name__)
 
-def get_route_geojson(start_lat, start_lon, end_lat, end_lon, profile='driving-car'):
-    """
-    Returns a GeoJSON route from ORS between two points.
-    profile: 'driving-car', 'cycling-regular', 'foot-walking', etc.
-    """
-    try:
-        coords = [(float(start_lon), float(start_lat)), (float(end_lon), float(end_lat))]
-        route = client.directions(
-            coordinates=coords,
-            profile=profile,
-            format='geojson'
-        )
-        return route
-    except Exception as e:
-        print(f"ERROR: ORS route request failed: {e}")
-        return None
-    
-# ============ NEW HELPER FUNCTIONS FOR ORS ============
-def get_route_and_calculate(start_lat, start_lon, end_lat, end_lon, transport_type='driving-car'):
-    """
-    Uses OpenRouteService to get a real route and extract distance/time.
-    Returns: (distance_km, travel_time_minutes, route_geojson)
-    """
-    try:
-        # Profile mapping based on transport type
-        profile_map = {
-            'Taxi': 'driving-car',
-            'Motorcycle': 'driving-car',
-            'Jeepney': 'driving-car',
-            'Bus': 'driving-car',
-        }
-        profile = profile_map.get(transport_type, 'driving-car')
-        
-        # Call ORS
-        route_data = get_route_geojson(start_lat, start_lon, end_lat, end_lon, profile=profile)
-        
-        if not route_data or 'features' not in route_data or len(route_data['features']) == 0:
-            print(f"WARNING: ORS returned no features")
-            return None, None, None
-        
-        # Extract distance and duration from first feature
-        feature = route_data['features'][0]
-        properties = feature.get('properties', {})
-        
-        # ORS returns total distance in meters and duration in seconds
-        distance_m = properties.get('summary', {}).get('distance', 0)
-        duration_s = properties.get('summary', {}).get('duration', 0)
-        
-        # Convert to km and minutes
-        distance_km = Decimal(str(distance_m / 1000))
-        travel_time_minutes = Decimal(str(duration_s / 60))
-        
-        return distance_km, travel_time_minutes, route_data
-        
-    except Exception as e:
-        print(f"ERROR: ORS route calculation failed: {e}")
-        return None, None, None
+# Cities for Cebu-area heuristics
+CEBU_CITY_KEYWORDS = ["cebu", "mandaue", "lapu", "liloan", "consolacion", "talisay"]
 
-def store_route_path(route_instance, route_geojson):
-    """
-    Stores the route path coordinates in the Route model for future reference.
-    """
-    if not route_geojson or 'features' not in route_geojson:
-        return
-    
-    try:
-        feature = route_geojson['features'][0]
-        coords = feature.get('geometry', {}).get('coordinates', [])
-        
-        # Store as JSON list of [lat, lon] pairs
-        if coords:
-            # Swap [lon, lat] to [lat, lon] for storage
-            path_coords = [[lat, lon] for lon, lat in coords]
-            route_instance.route_path_coords = json.dumps(path_coords)
-    except Exception as e:
-        print(f"WARNING: Could not store route path: {e}")
+# Default map center (put in settings if you prefer)
+DEFAULT_MAP_CENTER = getattr(settings, 'DEFAULT_MAP_CENTER', (10.3157, 123.8854))
+DEFAULT_MAP_ZOOM = getattr(settings, 'DEFAULT_MAP_ZOOM', 14)
 
-def routes_page(request):
-    form = RouteForm()
-    suggestion_form = JeepneySuggestionForm()
-    success_message = None
-    error_message = None
+# Cache timeouts (seconds)
+GEOCODE_CACHE_TTL = getattr(settings, 'GEOCODE_CACHE_TTL', 24 * 60 * 60)  # 24 hours
+ORS_ROUTE_CACHE_TTL = getattr(settings, 'ORS_ROUTE_CACHE_TTL', 6 * 60 * 60)  # 6 hours
+MAP_HTML_CACHE_TTL = getattr(settings, 'MAP_HTML_CACHE_TTL', 5 * 60)  # 5 minutes
 
-    if request.method == 'POST':
-        form_type = request.POST.get('form_type')
+# Init geolocator
+geolocator = Nominatim(user_agent=getattr(settings, 'GEOCODER_USER_AGENT', 'trancit_app_geocoder'))
 
-        # 🟩 LEFT PANEL — User Route Planning
-        if form_type == 'plan_route':
-            form = RouteForm(request.POST)
-            if form.is_valid():
-                # Perform route calculation (distance, fare, etc.)
-                route_instance = form.save(commit=False)
-                # Example placeholders for backend-calculated fields
-                route_instance.distance_km = request.POST.get('distance_km', 0)
-                route_instance.fare = request.POST.get('fare', 0)
-                route_instance.save()
-                success_message = "Route successfully calculated and saved!"
-            else:
-                error_message = "Please check your inputs and try again."
-
-        # 🟨 RIGHT PANEL — Jeepney Route Suggestion
-        elif form_type == 'suggest_route':
-            suggestion_form = JeepneySuggestionForm(request.POST)
-            if suggestion_form.is_valid():
-                suggestion_form.save()
-                success_message = "Jeepney route suggestion added successfully!"
-            else:
-                error_message = "Please complete all required fields for jeepney route suggestion."
-
-    # Get saved user routes and community routes
-    saved_routes = Route.objects.all().order_by('-id')[:10]  # Adjust if you have filtering per user
-    all_routes = Route.objects.all().order_by('-id')
-
-    return render(request, 'route_input/index.html', {
-        'form': form,
-        'suggestion_form': suggestion_form,
-        'saved_routes': saved_routes,
-        'all_routes': all_routes,
-        'success_message': success_message,
-        'error_message': error_message,
-    })
+# Initialize ORS client (may raise if not configured)
+ORS_API_KEY = getattr(settings, 'ORS_API_KEY', None)
+if ORS_API_KEY:
+    ors_client = openrouteservice.Client(key=ORS_API_KEY)
+else:
+    ors_client = None
 
 
-def safe_geocode(address):
-    """Try multiple geocoding fallbacks for stubborn Cebu addresses."""
+# -----------------------------
+# Helper functions
+# -----------------------------
+
+def _cache_key_for_geocode(address: str) -> str:
+    return f"geo:{address.strip().lower()}"
+
+
+def cached_geocode(address: str):
+    """Geocode with caching and fallback heuristics. Returns geopy Location or None."""
     if not address:
         return None
 
+    key = _cache_key_for_geocode(address)
+    cached = cache.get(key)
+    if cached:
+        return cached
+
+    # Try a few fallbacks, similar to your safe_geocode
+    query = address.strip()
+    lower = query.lower()
     try:
-        query = address.strip()
-        lower_addr = query.lower()
-
-        # Append Cebu context if missing
-        if not any(city in lower_addr for city in ["cebu", "mandaue", "lapu", "liloan", "consolacion", "talisay"]):
-            query += ", Cebu, Philippines"
-
-        # 1️⃣ Primary geocode
-        location = geolocator.geocode(query, timeout=7)
-        if location:
-            return location
-
-        # 2️⃣ Try without postal codes or region names
-        query_no_numbers = " ".join([word for word in query.split() if not word.isdigit()])
-        location = geolocator.geocode(query_no_numbers, timeout=7)
-        if location:
-            return location
-
-        # 3️⃣ Simplify to just first two segments (street + barangay)
-        parts = [p.strip() for p in query.split(",") if p.strip()]
-        if len(parts) >= 2:
-            simplified = ", ".join(parts[:2]) + ", Cebu, Philippines"
-            location = geolocator.geocode(simplified, timeout=7)
-            if location:
-                return location
-
-        # 4️⃣ As last resort, drop to city-level
-        if "lapu" in lower_addr:
-            location = geolocator.geocode("Lapu-Lapu City, Cebu, Philippines", timeout=7)
-        elif "mandaue" in lower_addr:
-            location = geolocator.geocode("Mandaue City, Cebu, Philippines", timeout=7)
+        if not any(city in lower for city in CEBU_CITY_KEYWORDS):
+            query_with_context = f"{query}, Cebu, Philippines"
         else:
-            location = geolocator.geocode("Cebu City, Philippines", timeout=7)
+            query_with_context = query
 
-        return location
+        location = geolocator.geocode(query_with_context, timeout=7)
+        if not location:
+            query_no_numbers = " ".join([w for w in query_with_context.split() if not w.isdigit()])
+            location = geolocator.geocode(query_no_numbers, timeout=7)
+        if not location:
+            parts = [p.strip() for p in query.split(",") if p.strip()]
+            if len(parts) >= 2:
+                simplified = ", ".join(parts[:2]) + ", Cebu, Philippines"
+                location = geolocator.geocode(simplified, timeout=7)
+        if not location:
+            # city-level fallback
+            if "lapu" in lower:
+                location = geolocator.geocode("Lapu-Lapu City, Cebu, Philippines", timeout=7)
+            elif "mandaue" in lower:
+                location = geolocator.geocode("Mandaue City, Cebu, Philippines", timeout=7)
+            else:
+                location = geolocator.geocode("Cebu City, Philippines", timeout=7)
+
+        if location:
+            # store a small tuple to avoid pickling geopy objects
+            cached_val = (location.latitude, location.longitude, getattr(location, 'address', None))
+            cache.set(key, cached_val, GEOCODE_CACHE_TTL)
+            return cached_val
 
     except (GeocoderTimedOut, GeocoderServiceError) as e:
-        print(f"WARNING: Geocode failed for '{address}': {e}")
+        logger.warning("Geocoder error for %s: %s", address, e, exc_info=True)
+
+    return None
+
+
+def _parse_decimal(value):
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
         return None
 
-# Helper: distance/time approx
+
 def calculate_distance_and_time(start_lat, start_lon, end_lat, end_lon):
+    """Approximate (geodesic) distance and a naive travel time estimate."""
     if not all([start_lat, start_lon, end_lat, end_lon]):
         return None, None
 
-    coords_1 = (float(start_lat), float(start_lon))
-    coords_2 = (float(end_lat), float(end_lon))
+    try:
+        coords_1 = (float(start_lat), float(start_lon))
+        coords_2 = (float(end_lat), float(end_lon))
+        distance_km = geodesic(coords_1, coords_2).km
+        # conservative average speed assumption (kph)
+        average_speed_kph = 20
+        travel_time_minutes = (distance_km / average_speed_kph) * 60
+        return Decimal(f"{distance_km:.2f}"), Decimal(f"{travel_time_minutes:.2f}")
+    except Exception:
+        logger.exception("Failed to calculate geodesic distance")
+        return None, None
 
-    distance_km = geodesic(coords_1, coords_2).km
-    
-    average_speed_kph = 20
-    travel_time_minutes = distance_km * 3 # approx 3 minutes per km
-    
-    return Decimal(f"{distance_km:.2f}"), Decimal(f"{travel_time_minutes:.2f}")
 
-# Helper: fare calc
 def calculate_fare(transport_type, distance_km, travel_time_minutes):
     if distance_km is None or travel_time_minutes is None:
         return None
+    try:
+        distance_km = Decimal(distance_km)
+        travel_time_minutes = Decimal(travel_time_minutes)
 
-    distance_km = Decimal(distance_km)
-    travel_time_minutes = Decimal(travel_time_minutes)
-
-    if transport_type == 'Taxi':
-        base_fare = Decimal('40.00')
-        fare_per_km = Decimal('13.50')
-        fare_per_minute = Decimal('2.00')
-        calculated_fare = base_fare + (fare_per_km * distance_km) + (fare_per_minute * travel_time_minutes)
-        return Decimal(f"{calculated_fare:.2f}")
-
-    elif transport_type == 'Motorcycle':
-        base_fare = Decimal('20.00')
-        fare_per_km = Decimal('10.00')
-        calculated_fare = base_fare + (fare_per_km * distance_km)
-        return Decimal(f"{calculated_fare:.2f}")
-
-    elif transport_type == 'Jeepney':
-        return Decimal('13.00')
-        
+        if transport_type == 'Taxi':
+            base_fare = Decimal('40.00')
+            fare_per_km = Decimal('13.50')
+            fare_per_minute = Decimal('2.00')
+            return Decimal(f"{(base_fare + fare_per_km * distance_km + fare_per_minute * travel_time_minutes):.2f}")
+        if transport_type == 'Motorcycle':
+            base_fare = Decimal('20.00')
+            fare_per_km = Decimal('10.00')
+            return Decimal(f"{(base_fare + fare_per_km * distance_km):.2f}")
+        if transport_type == 'Jeepney':
+            # Flat rate preserved from original
+            return Decimal('13.00')
+    except Exception:
+        logger.exception("Fare calculation failed")
     return None
 
-def logout_view(request):
-    logout(request)
-    return redirect('/')
 
-# Main Index View
+# -----------------------------
+# OpenRouteService helpers (cached)
+# -----------------------------
 
-@login_required(login_url='/') #must login before seeing dashboard
+def _ors_cache_key(a_lat, a_lon, b_lat, b_lon, profile):
+    return f"ors:{float(a_lat):.6f},{float(a_lon):.6f}:{float(b_lat):.6f},{float(b_lon):.6f}:{profile}"
+
+
+def get_route_geojson_cached(start_lat, start_lon, end_lat, end_lon, profile='driving-car'):
+    """Fetch a geojson route from ORS with caching. Returns the geojson (dict) or None."""
+    if ors_client is None:
+        logger.warning("ORS client not configured (no API key)")
+        return None
+
+    key = _ors_cache_key(start_lat, start_lon, end_lat, end_lon, profile)
+    cached = cache.get(key)
+    if cached:
+        return cached
+
+    try:
+        coords = [(float(start_lon), float(start_lat)), (float(end_lon), float(end_lat))]
+        route = ors_client.directions(coordinates=coords, profile=profile, format='geojson')
+        cache.set(key, route, ORS_ROUTE_CACHE_TTL)
+        return route
+    except Exception as e:
+        logger.exception("ORS route request failed: %s", e)
+        return None
+
+
+def get_route_and_calculate(start_lat, start_lon, end_lat, end_lon, transport_type='driving-car'):
+    profile_map = {
+        'Taxi': 'driving-car',
+        'Motorcycle': 'driving-car',
+        'Jeepney': 'driving-car',
+        'Bus': 'driving-car',
+    }
+    profile = profile_map.get(transport_type, 'driving-car')
+    route_data = get_route_geojson_cached(start_lat, start_lon, end_lat, end_lon, profile=profile)
+    if not route_data or 'features' not in route_data or not route_data['features']:
+        logger.warning("ORS returned no features for route %s -> %s", (start_lat, start_lon), (end_lat, end_lon))
+        return None, None, None
+
+    try:
+        feature = route_data['features'][0]
+        props = feature.get('properties', {})
+        distance_m = props.get('summary', {}).get('distance', 0)
+        duration_s = props.get('summary', {}).get('duration', 0)
+        distance_km = Decimal(str(distance_m / 1000))
+        travel_time_minutes = Decimal(str(duration_s / 60))
+        return distance_km, travel_time_minutes, route_data
+    except Exception:
+        logger.exception("Failed to extract ORS summary")
+        return None, None, None
+
+
+def store_route_path(route_instance, route_geojson):
+    """Store route path coordinates on the model instance (as JSON lat/lon list)."""
+    if not route_geojson or 'features' not in route_geojson:
+        return
+    try:
+        feature = route_geojson['features'][0]
+        coords = feature.get('geometry', {}).get('coordinates', [])
+        # ORS returns [lon, lat]; convert to [lat, lon]
+        path_coords = [[float(lat), float(lon)] for lon, lat in coords]
+        route_instance.route_path_coords = json.dumps(path_coords)
+    except Exception:
+        logger.exception("Failed storing route path")
+
+
+# -----------------------------
+# View helpers (extracted from big views)
+# -----------------------------
+
+def _get_coords_from_request_data(text_value: str, lat_str: str = None, lon_str: str = None):
+    """Return (lat, lon, error_message) — lat/lon are Decimal or None."""
+    if lat_str and lon_str:
+        try:
+            return Decimal(lat_str), Decimal(lon_str), None
+        except InvalidOperation:
+            return None, None, 'Invalid latitude/longitude.'
+
+    # Use cached geocoder
+    geocoded = cached_geocode(text_value)
+    if geocoded:
+        lat, lon, address = geocoded
+        return Decimal(str(lat)), Decimal(str(lon)), None
+    return None, None, f"Could not find coordinates for '{text_value}'."
+
+
+def _build_map_html(center_lat, center_lon, origin_marker=None, dest_marker=None, routes=[]):
+    """Build and return folium map HTML. 'routes' is a list of dicts with path_coords and popup."""
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=DEFAULT_MAP_ZOOM)
+
+    if origin_marker:
+        folium.Marker(
+            [float(origin_marker['lat']), float(origin_marker['lon'])],
+            popup=origin_marker.get('popup', 'Origin'),
+            icon=folium.Icon(color='blue', prefix='fa', icon='location-dot')
+        ).add_to(m)
+
+    if dest_marker:
+        folium.Marker(
+            [float(dest_marker['lat']), float(dest_marker['lon'])],
+            popup=dest_marker.get('popup', 'Destination'),
+            icon=folium.Icon(color='darkred', prefix='fa', icon='flag-checkered')
+        ).add_to(m)
+
+    for r in routes:
+        coords = r.get('path_coords')
+        if coords and len(coords) >= 2:
+            folium.PolyLine(coords, weight=3, opacity=0.7, popup=r.get('popup')).add_to(m)
+        else:
+            # fallback: straight line between origin/dest
+            o = r.get('origin')
+            d = r.get('destination')
+            if o and d:
+                folium.PolyLine([ [float(o['lat']), float(o['lon'])], [float(d['lat']), float(d['lon'])] ], weight=3, opacity=0.7, popup=r.get('popup')).add_to(m)
+
+    return m._repr_html_()
+
+
+# -----------------------------
+# Views
+# -----------------------------
+
+@login_required(login_url='/')
 def index(request):
+    """Main dashboard view. Builds the folium map inline and injects click JS for pinning."""
     error_message = None
     success_message = None
-    map_html = ""
+
+    # Suggestion filters (GET params)
+    origin_q = request.GET.get('origin_search', '')
+    dest_q = request.GET.get('destination_search', '')
+    transport_q = request.GET.get('transport_type_search', '')
+    code_q = request.GET.get('jeepney_code_search', '')
+
+    # Base queryset for suggestions
+    suggested_qs = Route.objects.all().order_by('transport_type', 'code', 'origin')
+
+    filters = Q()
+    if origin_q:
+        filters &= Q(origin__icontains=origin_q)
+    if dest_q:
+        filters &= Q(destination__icontains=dest_q)
+    if transport_q:
+        filters &= Q(transport_type=transport_q)
+    if code_q:
+        filters &= Q(code=code_q)
+    if filters:
+        suggested_qs = suggested_qs.filter(filters)
+
+    # Forms
     form = RouteForm()
-    context = {}
-    
-    current_origin_lat = None
-    current_origin_lon = None
-    current_destination_lat = None
-    current_destination_lon = None
-    get_origin_text = None
-    get_destination_text = None
+    suggestion_form = JeepneySuggestionForm()
 
-    # --- Initialize search variables for the Suggestions panel ---
-    search_query_origin = request.GET.get('origin_search', '')
-    search_query_destination = request.GET.get('destination_search', '')
-    search_transport_type = request.GET.get('transport_type_search', '')
-    search_jeepney_code = request.GET.get('jeepney_code_search', '')
+    # GET params for pre-filling map center and markers
+    get_origin_lat = request.GET.get('origin_latitude')
+    get_origin_lon = request.GET.get('origin_longitude')
+    get_origin_text = request.GET.get('origin_text')
+    get_dest_lat = request.GET.get('destination_latitude')
+    get_dest_lon = request.GET.get('destination_longitude')
+    get_dest_text = request.GET.get('destination_text')
 
-    # --- Routes for the Suggestions Panel (dynamic filtering) ---
-    suggested_routes = Route.objects.all().order_by('transport_type', 'code', 'origin')
+    current_origin_lat = _parse_decimal(get_origin_lat) if get_origin_lat else None
+    current_origin_lon = _parse_decimal(get_origin_lon) if get_origin_lon else None
+    current_dest_lat = _parse_decimal(get_dest_lat) if get_dest_lat else None
+    current_dest_lon = _parse_decimal(get_dest_lon) if get_dest_lon else None
 
-    if search_query_origin or search_query_destination or search_transport_type or search_jeepney_code:
-        filters = Q()
-        if search_query_origin:
-            filters &= Q(origin__icontains=search_query_origin)
-        if search_query_destination:
-            filters &= Q(destination__icontains=search_query_destination)
-        if search_transport_type and search_transport_type != '':
-            filters &= Q(transport_type=search_transport_type)
-        if search_jeepney_code and search_jeepney_code != '':
-            filters &= Q(code=search_jeepney_code)
-        
-        suggested_routes = suggested_routes.filter(filters)
-    
-    # --- Handle GET request for initial page load or JS redirects with detected location ---
-    if request.method == 'GET':
-        get_origin_lat_str = request.GET.get('origin_latitude')
-        get_origin_lon_str = request.GET.get('origin_longitude')
-        get_origin_text = request.GET.get('origin_text')
-
-        # Handle destination parameters from URL
-        get_destination_lat_str = request.GET.get('destination_latitude')
-        get_destination_lon_str = request.GET.get('destination_longitude')
-        get_destination_text = request.GET.get('destination_text')
-
-        if get_origin_lat_str and get_origin_lon_str:
-            try:
-                current_origin_lat = Decimal(get_origin_lat_str)
-                current_origin_lon = Decimal(get_origin_lon_str)
-                
-                # Backend reverse geocoding for pre-filling form
-                try:
-                    reverse_location = geolocator.reverse(
-                        (float(current_origin_lat), float(current_origin_lon)), timeout=5
-                    )
-                    if reverse_location:
-                        get_origin_text = reverse_location.address
-                        # Initialize form with both origin and destination if available
-                        initial_data = {'origin': get_origin_text}
-                        if get_destination_text:
-                            initial_data['destination'] = get_destination_text
-                        form = RouteForm(initial=initial_data)
-                    else:
-                        get_origin_text = f"Lat: {get_origin_lat_str}, Lon: {get_origin_lon_str}"
-                        print(f"WARNING: Backend reverse geocoding failed for {get_origin_lat_str},{get_origin_lon_str}")
-                except (GeocoderTimedOut, GeocoderServiceError) as e:
-                    get_origin_text = f"Lat: {get_origin_lat_str}, Lon: {get_origin_lon_str}"
-                    print(f"ERROR: Backend reverse geocoding service error: {e}")
-
-            except InvalidOperation:
-                print("WARNING: Invalid latitude/longitude from GET parameters.")
-
-        #  Handle destination coordinates from URL
-        if get_destination_lat_str and get_destination_lon_str:
-            try:
-                current_destination_lat = Decimal(get_destination_lat_str)
-                current_destination_lon = Decimal(get_destination_lon_str)
-                
-                # Pre-fill destination form field with the raw text
-                if get_destination_text and not form.initial:
-                    form = RouteForm(initial={
-                        'origin': get_origin_text if get_origin_text else '',
-                        'destination': get_destination_text
-                    })
-                elif get_destination_text and form.initial:
-                    # Update existing form initial data
-                    form.initial['destination'] = get_destination_text
-                
-            except InvalidOperation:
-                print("WARNING: Invalid destination latitude/longitude from GET parameters.")
-        
-        if not form.initial:
-            form = RouteForm()
-
-    # --- Handle POST request for saving new routes ---
-    elif request.method == 'POST':
-        form = RouteForm(request.POST) 
-        if form.is_valid():
-            route_instance = form.save(commit=False)
-
-            origin_text = route_instance.origin
-            destination_text = route_instance.destination
-            
-            # Check for hidden client-side coordinates for origin
-            post_origin_lat_str = request.POST.get('origin_latitude')
-            post_origin_lon_str = request.POST.get('origin_longitude')
-            
-            if post_origin_lat_str and post_origin_lon_str:
-                try:
-                    route_instance.origin_latitude = Decimal(post_origin_lat_str)
-                    route_instance.origin_longitude = Decimal(post_origin_lon_str)
-                    current_origin_lat = Decimal(post_origin_lat_str)
-                    current_origin_lon = Decimal(post_origin_lon_str)
-                except InvalidOperation:
-                    error_message = "Invalid origin coordinates from client-side detection."
-                    print(f"ERROR: Invalid client-side origin coords: {post_origin_lat_str}, {post_origin_lon_str}")
-            else: 
-                try:
-                    search_query = origin_text.strip()
-                    lower_origin = search_query.lower()
-
-                    if not any(city in lower_origin for city in ["cebu", "mandaue", "lapu", "liloan", "consolacion", "talisay"]):
-                        search_query += ", Cebu City, Philippines"
-
-                    origin_location = safe_geocode(search_query)
-
-                    if origin_location:
-                        route_instance.origin_latitude = Decimal(str(origin_location.latitude))
-                        route_instance.origin_longitude = Decimal(str(origin_location.longitude))
-                    else:
-                        error_message = f"Could not find coordinates for origin: {origin_text}"
-
-                except (GeocoderTimedOut, GeocoderServiceError) as e:
-                    error_message = f"Geocoding service error for Origin: {origin_text}. Try again later. ({e})"
-                    print(f"ERROR: Geocoding service error for origin: {e}")
-
-            # Geocode destination
-            if not error_message:
-                try:
-                    search_query = destination_text.strip()
-                    lower_dest = search_query.lower()
-
-                    if not any(city in lower_dest for city in ["cebu", "mandaue", "lapu", "liloan", "consolacion", "talisay"]):
-                        search_query += ", Cebu City, Philippines"
-
-                    destination_location = safe_geocode(search_query)
-
-                    if destination_location:
-                        route_instance.destination_latitude = Decimal(str(destination_location.latitude))
-                        route_instance.destination_longitude = Decimal(str(destination_location.longitude))
-                    else:
-                        error_message = f"Could not find coordinates for destination: {destination_text}"
-
-                except (GeocoderTimedOut, GeocoderServiceError) as e:
-                    error_message = f"Geocoding service error for Destination: {destination_text}. Try again later. ({e})"
-                    print(f"ERROR: Geocoding service error for destination: {e}")
-            
-            # ===== NEW: Distance/Time/Fare Calc using ORS =====
-            if not error_message and route_instance.origin_latitude and route_instance.origin_longitude and \
-               route_instance.destination_latitude and route_instance.destination_longitude:
-                
-                # Use ORS to calculate real route distance and time
-                distance_km, travel_time_minutes, route_geojson = get_route_and_calculate(
-                    route_instance.origin_latitude, 
-                    route_instance.origin_longitude,
-                    route_instance.destination_latitude, 
-                    route_instance.destination_longitude,
-                    route_instance.transport_type
-                )
-                
-                if distance_km and travel_time_minutes:
-                    route_instance.distance_km = distance_km
-                    route_instance.travel_time_minutes = travel_time_minutes
-                    route_instance.fare = calculate_fare(route_instance.transport_type, distance_km, travel_time_minutes)
-                    
-                    # Store the actual route path coordinates
-                    store_route_path(route_instance, route_geojson)
-                else:
-                    error_message = "Could not calculate route using OpenRouteService. Please try again."
-            else:
-                error_message = error_message or "Missing coordinates for distance/fare calculation."
-
-            # Save if no errors
-            if not error_message:
-                try:
-                    route_instance.code = request.POST.get('code')
-                    if route_instance.transport_type != 'Jeepney':
-                        route_instance.code = None
-
-                    route_instance.save()
-                    success_message = "Route saved!"
-                    print(f"INFO: Saved: {route_instance.transport_type} {route_instance.code or 'N/A'}: {route_instance.origin} to {route_instance.destination} (Distance: {route_instance.distance_km} km, Fare: Php {route_instance.fare or 'N/A'})")
-                    return redirect('routes_page')
-                except DatabaseError as e:
-                    error_message = f"DB Error: {e}"
-                    print(f"ERROR: DB Error saving route: {e}")
-                except Exception as e:
-                    error_message = f"Unexpected error saving route: {e}"
-                    print(f"ERROR: Unexpected error saving route: {e}")
-            
-        
-        context = {
-            'form': form, 'error_message': error_message, 'success_message': success_message,
-            'map': map_html, 'all_routes': suggested_routes, 'get_origin_text': get_origin_text,
-            'search_origin': search_query_origin, 'search_destination': search_query_destination,
-            'search_transport_type': search_transport_type, 'search_jeepney_code': search_jeepney_code,
-        }
-        return render(request, 'route_input/index.html', context)
-    
-    # ===== NEW: Render routes with actual ORS polylines =====
-    map_center_lat = 10.3157
-    map_center_lon = 123.8854
-
-    # Update map center to show both origin and destination if available
-    if current_origin_lat and current_origin_lon and current_destination_lat and current_destination_lon:
-        # Center between origin and destination
-        map_center_lat = (float(current_origin_lat) + float(current_destination_lat)) / 2
-        map_center_lon = (float(current_origin_lon) + float(current_destination_lon)) / 2
+    # Choose map center
+    if current_origin_lat and current_origin_lon and current_dest_lat and current_dest_lon:
+        center_lat = (float(current_origin_lat) + float(current_dest_lat)) / 2
+        center_lon = (float(current_origin_lon) + float(current_dest_lon)) / 2
     elif current_origin_lat and current_origin_lon:
-        map_center_lat = float(current_origin_lat)
-        map_center_lon = float(current_origin_lon)
-    elif current_destination_lat and current_destination_lon:
-        map_center_lat = float(current_destination_lat)
-        map_center_lon = float(current_destination_lon)
+        center_lat, center_lon = float(current_origin_lat), float(current_origin_lon)
+    elif current_dest_lat and current_dest_lon:
+        center_lat, center_lon = float(current_dest_lat), float(current_dest_lon)
+    else:
+        center_lat, center_lon = DEFAULT_MAP_CENTER
+
+    # Caching key
+    map_cache_key = f"map_html:{center_lat:.6f},{center_lon:.6f}:{origin_q}:{dest_q}:{transport_q}:{code_q}:{request.user.id if request.user.is_authenticated else request.session.session_key}"
+    map_html = cache.get(map_cache_key)
+
+    if not map_html:
+        # Build folium map inline
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=DEFAULT_MAP_ZOOM)
+
+        if current_origin_lat and current_origin_lon:
+            folium.Marker(
+                [float(current_origin_lat), float(current_origin_lon)],
+                popup=get_origin_text or "Origin",
+                icon=folium.Icon(color='blue', icon='circle', prefix='fa')
+            ).add_to(m)
+
+        if current_dest_lat and current_dest_lon:
+            folium.Marker(
+                [float(current_dest_lat), float(current_dest_lon)],
+                popup=get_dest_text or "Destination",
+                icon=folium.Icon(color='red', icon='circle', prefix='fa')
+            ).add_to(m)
+
+
+        # Draw route between current origin and destination if both exist
+        route_geojson = None
         
-    m = folium.Map(location=[map_center_lat, map_center_lon], zoom_start=14)
+        if current_origin_lat and current_origin_lon and current_dest_lat and current_dest_lon:
+            try:
+                distance_km, travel_minutes, route_geojson = get_route_and_calculate(
+                    current_origin_lat,
+                    current_origin_lon,
+                    current_dest_lat,
+                    current_dest_lon,
+                    'driving-car'
+                )
 
-    # Plot current detected location (origin)
-    if current_origin_lat and current_origin_lon:
-        popup_text = "Your Current Location"
-        if get_origin_text:
-            popup_text = get_origin_text
-        folium.Marker(
-            [float(current_origin_lat), float(current_origin_lon)],
-            popup=popup_text,
-            icon=folium.Icon(color='blue', icon='location-dot', prefix='fa')
-        ).add_to(m)
-    
-    # Plot destination marker from URL parameters
-    if current_destination_lat and current_destination_lon:
-        popup_text = "Your Destination"
-        if get_destination_text:
-            popup_text = get_destination_text
-        folium.Marker(
-            [float(current_destination_lat), float(current_destination_lon)],
-            popup=popup_text,
-            icon=folium.Icon(color='darkred', icon='flag-checkered', prefix='fa')
-        ).add_to(m)
+                if route_geojson and 'features' in route_geojson and route_geojson['features']:
+                    feature = route_geojson['features'][0]
+                    coords = feature['geometry']['coordinates']
+                    path_coords = [[coord[1], coord[0]] for coord in coords]
+                    folium.PolyLine(path_coords,
+                        color="#2B86C3EE",
+                        weight=8,
+                        opacity=0.8,
+                        popup="Route"
+                    ).add_to(m)
+                else:
+                    folium.PolyLine(
+                        [[float(current_origin_lat), float(current_origin_lon)],
+                        [float(current_dest_lat), float(current_dest_lon)]],
+                        color="#2B86C3EE",
+                        weight=3,
+                        opacity=0.7,
+                        popup="Approximate route"
+                    ).add_to(m)
 
-    # Plot all existing routes with actual ORS polylines
-    for route in suggested_routes: 
-        if all([route.origin_latitude, route.origin_longitude, route.destination_latitude, route.destination_longitude]):
-            
-            # Origin marker
-            folium.Marker(
-                [float(route.origin_latitude), float(route.origin_longitude)],
-                popup=f"Origin: {route.origin}<br>Type: {route.transport_type}<br>Code: {route.code or 'N/A'}<br>Fare: Php {route.fare or 'N/A'}",
-                icon=folium.Icon(color='green', icon='play', prefix='fa')
-            ).add_to(m)
+            except Exception as e:
+                print("ORS route drawing error:", e)
 
-            # Destination marker
-            folium.Marker(
-                [float(route.destination_latitude), float(route.destination_longitude)],
-                popup=f"Destination: {route.destination}<br>Type: {route.transport_type}<br>Code: {route.code or 'N/A'}<br>Fare: Php {route.fare or 'N/A'}",
-                icon=folium.Icon(color='red', icon='stop', prefix='fa')
-            ).add_to(m)
+        # Draw suggested routes (limit to 100 for performance)
+        for route in suggested_qs[:100]:
+            if all([route.origin_latitude, route.origin_longitude, route.destination_latitude, route.destination_longitude]):
+                # If model stores full path coords, use them; otherwise use straight line
+                path_coords = None
+                try:
+                    if hasattr(route, 'get_path_coords'):
+                        path_coords = route.get_path_coords()
+                except Exception:
+                    logger.exception("Error getting path coords for route %s", route.id)
 
-            # NEW: Use stored route path if available, otherwise fall back to straight line
-            path_coords = route.get_path_coords()
-            if path_coords and len(path_coords) > 0:
-                # Draw actual route polyline from ORS coordinates
-                folium.PolyLine(
-                    path_coords,
-                    color="purple",
-                    weight=3,
-                    opacity=0.7,
-                    popup=f"Route {route.code or 'N/A'}: {route.origin} to {route.destination}<br>Type: {route.transport_type}<br>Distance: {route.distance_km or 'N/A'} km<br>Time: {route.travel_time_minutes or 'N/A'} min<br>Fare: Php {route.fare or 'N/A'}"
-                ).add_to(m)
-            else:
-                # Fallback: straight line if no path stored
-                points = [
-                    (float(route.origin_latitude), float(route.origin_longitude)),
-                    (float(route.destination_latitude), float(route.destination_longitude))
-                ]
-                folium.PolyLine(
-                    points,
-                    color="purple",
-                    weight=3,
-                    opacity=0.7,
-                    popup=f"Route {route.code or 'N/A'}: {route.origin} to {route.destination}<br>Type: {route.transport_type}<br>Distance: {route.distance_km or 'N/A'} km<br>Time: {route.travel_time_minutes or 'N/A'} min<br>Fare: Php {route.fare or 'N/A'}"
-                ).add_to(m)
+                if path_coords and len(path_coords) >= 2:
+                    folium.PolyLine(
+                        path_coords,
+                        color='purple',
+                        weight=3,
+                        opacity=0.7,
+                        popup=f"{route.transport_type} {route.code or ''}: {route.origin} → {route.destination}").add_to(m)
+                else:
+                    folium.PolyLine(
+                        [[float(route.origin_latitude), float(route.origin_longitude)],
+                         [float(route.destination_latitude), float(route.destination_longitude)]],
+                        color='purple',
+                        weight=3,
+                        opacity=0.7,
+                        popup=f"{route.transport_type} {route.code or ''}: {route.origin} → {route.destination}"
+                    ).add_to(m)
 
-    map_html = m._repr_html_()
-    # Context for rendering (for both GET and POST re-renders)
-    context = {
-        'form': form,
-        'success_message': success_message,
-        'error_message': error_message,
-        'map': map_html,
-        'all_routes': suggested_routes, 
-        'get_origin_text': get_origin_text, 
-        'get_destination_text': get_destination_text,
-        'search_origin': search_query_origin,
-        'search_destination': search_query_destination,
-        'search_transport_type': search_transport_type,
-        'search_jeepney_code': search_jeepney_code,
+        folium.LayerControl().add_to(m)
+
+
+        # -- Inject JavaScript for map click-to-pin behavior --
+        # Keep this JS indentation-free (no leading spaces) to avoid stray indentation in output.
+        # ayaw jud ni hilabta kay mao ni siya ang maka ping og locatoin without the need to use you computers GPS
+        click_js = """
+// Runs inside the Folium iframe
+function initFoliumMap() {
+  for (const key in window) {
+    if (key.startsWith("map_") && window[key] instanceof L.Map) {
+      window.map = window[key];
+      console.log("✅ Folium map found inside iframe:", key);
+      attachHandlers();
+      return;
+    }
+  }
+  setTimeout(initFoliumMap, 500);
+}
+
+function attachHandlers() {
+  if (!window.map) return;
+  window.mapClickMode = null;
+
+  // Listen for messages from the parent page
+  window.addEventListener("message", function(event) {
+    const data = event.data;
+    if (data?.type === "SET_PIN_MODE") {
+      window.mapClickMode = data.mode;
+      alert("Click on the map to set " + data.mode);
+    }
+  });
+
+  window.map.on("click", function(e) {
+    if (!window.mapClickMode) return;
+    const { lat, lng } = e.latlng;
+
+    const markerKey = window.mapClickMode === "origin" ? "originMarker" : "destinationMarker";
+
+    // Remove only the marker for the same type
+    if (window[markerKey]) {
+    try { window.map.removeLayer(window[markerKey]); } catch {}
     }
 
-    # FIXED: Handle saved routes with user field
+    // Add new marker
+    window[markerKey] = L.marker([lat, lng]).addTo(window.map)
+    .bindPopup(window.mapClickMode + ": " + lat.toFixed(5) + ", " + lng.toFixed(5))
+    .openPopup();
+
+    const latInput = parent.document.getElementById("id_" + window.mapClickMode + "_latitude");
+    const lonInput = parent.document.getElementById("id_" + window.mapClickMode + "_longitude");
+    const textInput = parent.document.querySelector("input[name='" + window.mapClickMode + "']");
+    if (latInput && lonInput) {
+      latInput.value = lat.toFixed(6);
+      lonInput.value = lng.toFixed(6);
+      fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=" + lat + "&lon=" + lng)
+        .then(r => r.json())
+        .then(d => { textInput.value = d.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`; })
+        .catch(() => { textInput.value = `${lat.toFixed(5)}, ${lng.toFixed(5)}`; });
+    }
+
+    window.mapClickMode = null;
+  });
+}
+
+initFoliumMap();
+"""
+        m.get_root().html.add_child(folium.Element(f"<script>{click_js}</script>"))
+
+        # Render map HTML and cache
+        use_cache = not (current_origin_lat and current_dest_lat)
+        map_html = m._repr_html_()
+        cache.set(map_cache_key, map_html, MAP_HTML_CACHE_TTL)
+
+    # Saved routes for user or session
     if request.user.is_authenticated:
         saved_routes = SavedRoute.objects.filter(user=request.user)
     else:
-        sk = _get_session_key(request)
+        if not request.session.session_key:
+            request.session.create()
+        sk = request.session.session_key
         saved_routes = SavedRoute.objects.filter(session_key=sk)
-        
-        context['saved_routes'] = saved_routes
+
+    context = {
+        'form': form,
+        'suggestion_form': suggestion_form,
+        'map': map_html,
+        'all_routes': suggested_qs,
+        'saved_routes': saved_routes,
+        'success_message': success_message,
+        'error_message': error_message,
+        'get_origin_text': get_origin_text,
+        'get_destination_text': get_dest_text,
+        'search_origin': origin_q,
+        'search_destination': dest_q,
+        'search_transport_type': transport_q,
+        'search_jeepney_code': code_q,
+    }
+
     return render(request, 'route_input/index.html', context)
 
-def _get_session_key(request):
-    """Ensure each user (even anonymous) has a unique session key."""
-    if not request.session.session_key:
-        request.session.create()
-    return request.session.session_key
 
+@require_POST
+def plan_route(request):
+    """Endpoint to handle route planning + saving. Expects CSRF token if called from JS."""
+    form = RouteForm(request.POST)
+    if not form.is_valid():
+        return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Please check your inputs.'})
 
-@csrf_exempt
-def save_current_route(request):
-    """Save a route that the user manually inputs and likes."""
-    if request.method == "POST":
-        origin = request.POST.get("origin")
-        destination = request.POST.get("destination")
-        transport_type = request.POST.get("transport_type")
-        code = request.POST.get("code")
-        fare_val = request.POST.get("fare")
-        notes = request.POST.get("notes")
+    route_instance = form.save(commit=False)
 
-        # Try finding the route if it already exists
-        route = Route.objects.filter(
-            Q(origin=origin) & Q(destination=destination) &
-            Q(transport_type=transport_type) & Q(code=code)
-        ).first()
+    # First prefer client-supplied coordinates (hidden inputs)
+    post_origin_lat = request.POST.get('origin_latitude')
+    post_origin_lon = request.POST.get('origin_longitude')
+    post_dest_lat = request.POST.get('destination_latitude')
+    post_dest_lon = request.POST.get('destination_longitude')
 
-        saved = SavedRoute.objects.create(
-            user=request.user if request.user.is_authenticated else None,
-            session_key=_get_session_key(request),
-            original_route=route,
-            origin=origin,
-            destination=destination,
-            origin_latitude=route.origin_latitude if route else None,
-            origin_longitude=route.origin_longitude if route else None,
-            destination_latitude=route.destination_latitude if route else None,
-            destination_longitude=route.destination_longitude if route else None,
-            transport_type=transport_type,
-            code=code,
-            fare=fare_val or 0,
-            notes=notes or ""
-        )
-
-        return JsonResponse({"message": "Route saved successfully!", "id": saved.id})
-
-    return JsonResponse({"error": "Invalid request"}, status=400)
-
-
-@csrf_exempt
-def save_suggested_route(request):
-    """Save a route suggested by other users."""
-    if request.method == "POST":
-        route_id = request.POST.get("route_id")
-
+    # Origin
+    if post_origin_lat and post_origin_lon:
         try:
-            route = Route.objects.get(pk=route_id)
-        except Route.DoesNotExist:
-            return JsonResponse({"error": "Route not found"}, status=404)
+            route_instance.origin_latitude = Decimal(post_origin_lat)
+            route_instance.origin_longitude = Decimal(post_origin_lon)
+        except InvalidOperation:
+            return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Invalid origin coordinates.'})
+    else:
+        lat, lon, err = _get_coords_from_request_data(route_instance.origin)
+        if err:
+            return render(request, 'route_input/index.html', {'form': form, 'error_message': err})
+        route_instance.origin_latitude = lat
+        route_instance.origin_longitude = lon
 
-        saved = SavedRoute.objects.create(
-            user=request.user if request.user.is_authenticated else None,
-            session_key=_get_session_key(request),
-            original_route=route,
-            origin=route.origin,
-            destination=route.destination,
-            origin_latitude=route.origin_latitude,
-            origin_longitude=route.origin_longitude,
-            destination_latitude=route.destination_latitude,
-            destination_longitude=route.destination_longitude,
-            transport_type=route.transport_type,
-            code=route.code,
-            fare=route.fare or 0,
-            notes=route.notes or ""
+    # Destination
+    if post_dest_lat and post_dest_lon:
+        try:
+            route_instance.destination_latitude = Decimal(post_dest_lat)
+            route_instance.destination_longitude = Decimal(post_dest_lon)
+        except InvalidOperation:
+            return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Invalid destination coordinates.'})
+    else:
+        lat, lon, err = _get_coords_from_request_data(route_instance.destination)
+        if err:
+            return render(request, 'route_input/index.html', {'form': form, 'error_message': err})
+        route_instance.destination_latitude = lat
+        route_instance.destination_longitude = lon
+
+    # Try ORS for exact route
+    if all([route_instance.origin_latitude, route_instance.origin_longitude, route_instance.destination_latitude, route_instance.destination_longitude]):
+        distance_km, travel_minutes, route_geojson = get_route_and_calculate(
+            route_instance.origin_latitude, route_instance.origin_longitude,
+            route_instance.destination_latitude, route_instance.destination_longitude,
+            route_instance.transport_type
         )
+        if distance_km and travel_minutes:
+            route_instance.distance_km = distance_km
+            route_instance.travel_time_minutes = travel_minutes
+            route_instance.fare = calculate_fare(route_instance.transport_type, distance_km, travel_minutes)
+            store_route_path(route_instance, route_geojson)
+        else:
+            # Fallback to simple geodesic estimate
+            d_km, t_min = calculate_distance_and_time(route_instance.origin_latitude, route_instance.origin_longitude, route_instance.destination_latitude, route_instance.destination_longitude)
+            route_instance.distance_km = d_km
+            route_instance.travel_time_minutes = t_min
+            route_instance.fare = calculate_fare(route_instance.transport_type, d_km, t_min)
 
-        return JsonResponse({"message": "Suggested route saved!", "id": saved.id})
+    # sanitize code field for non-jeepney
+    if route_instance.transport_type != 'Jeepney':
+        route_instance.code = None
+    else:
+        route_instance.code = request.POST.get('code')
 
-    return JsonResponse({"error": "Invalid request"}, status=400)
+    try:
+        route_instance.save()
+        logger.info("Saved route %s -> %s (id=%s)", route_instance.origin, route_instance.destination, route_instance.id)
+
+        # Redirect back with route data for displaying on map
+        return redirect(
+            f"/?origin_latitude={route_instance.origin_latitude}"
+            f"&origin_longitude={route_instance.origin_longitude}"
+            f"&origin_text={route_instance.origin}"
+            f"&destination_latitude={route_instance.destination_latitude}"
+            f"&destination_longitude={route_instance.destination_longitude}"
+            f"&destination_text={route_instance.destination}"
+        )
+    except DatabaseError:
+        logger.exception("DB Error saving route")
+        return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Database error saving route.'})
+
+
+# Keep the community suggestion endpoint separated
+@require_POST
+def suggest_route(request):
+    form = JeepneySuggestionForm(request.POST)
+    if form.is_valid():
+        form.save()
+        return redirect('routes_page')
+    return render(request, 'route_input/index.html', {'suggestion_form': form, 'error_message': 'Please complete all required fields.'})
+
+
+# -----------------------------
+# AJAX / API endpoints (require CSRF token)
+# -----------------------------
+
+@require_POST
+def save_current_route(request):
+    """Save a route (AJAX) for the current user or session."""
+    origin = request.POST.get('origin')
+    destination = request.POST.get('destination')
+    transport_type = request.POST.get('transport_type')
+    code = request.POST.get('code')
+    fare_val = request.POST.get('fare')
+    notes = request.POST.get('notes')
+
+    route = Route.objects.filter(
+        Q(origin=origin) & Q(destination=destination) & Q(transport_type=transport_type) & Q(code=code)
+    ).first()
+
+    saved = SavedRoute.objects.create(
+        user=request.user if request.user.is_authenticated else None,
+        session_key=request.session.session_key or _get_session_key(request),
+        original_route=route,
+        origin=origin,
+        destination=destination,
+        origin_latitude=route.origin_latitude if route else None,
+        origin_longitude=route.origin_longitude if route else None,
+        destination_latitude=route.destination_latitude if route else None,
+        destination_longitude=route.destination_longitude if route else None,
+        transport_type=transport_type,
+        code=code,
+        fare=fare_val or 0,
+        notes=notes or "",
+        created_at=timezone.now() if hasattr(SavedRoute, 'created_at') else None
+    )
+
+    return JsonResponse({"message": "Route saved successfully!", "id": saved.id})
+
+
+@require_POST
+def save_suggested_route(request):
+    route_id = request.POST.get('route_id')
+    if not route_id:
+        return JsonResponse({'error': 'route_id required'}, status=400)
+    try:
+        route = Route.objects.get(pk=int(route_id))
+    except Route.DoesNotExist:
+        return JsonResponse({'error': 'Route not found'}, status=404)
+
+    saved = SavedRoute.objects.create(
+        user=request.user if request.user.is_authenticated else None,
+        session_key=request.session.session_key or _get_session_key(request),
+        original_route=route,
+        origin=route.origin,
+        destination=route.destination,
+        origin_latitude=route.origin_latitude,
+        origin_longitude=route.origin_longitude,
+        destination_latitude=route.destination_latitude,
+        destination_longitude=route.destination_longitude,
+        transport_type=route.transport_type,
+        code=route.code,
+        fare=route.fare or 0,
+        notes=route.notes or "",
+        created_at=timezone.now() if hasattr(SavedRoute, 'created_at') else None
+    )
+
+    return JsonResponse({"message": "Suggested route saved!", "id": saved.id})
+
 
 @require_POST
 def delete_saved_route(request):
-    """
-    Delete a saved route by id (only if owned by current user or session_key).
-    Expects 'saved_id' in POST.
-    """
     saved_id = request.POST.get('saved_id')
     if not saved_id:
         return JsonResponse({'success': False, 'error': 'saved_id required.'}, status=400)
-
     try:
         saved = SavedRoute.objects.get(pk=int(saved_id))
     except (SavedRoute.DoesNotExist, ValueError):
         return JsonResponse({'success': False, 'error': 'Not found.'}, status=404)
 
-    # Ownership check: user or session
+    # Ownership check
     if request.user.is_authenticated:
         if saved.user != request.user:
             return JsonResponse({'success': False, 'error': 'Forbidden.'}, status=403)
     else:
-        if saved.session_key != _get_session_key(request):
+        if saved.session_key != (request.session.session_key or _get_session_key(request)):
             return JsonResponse({'success': False, 'error': 'Forbidden.'}, status=403)
 
     saved.delete()
     return JsonResponse({'success': True})
 
+
 @require_POST
-@csrf_exempt  # optional if JS doesn't yet send CSRF
-def save_route(request):
+def save_route_ajax(request):
     try:
         user = request.user if request.user.is_authenticated else None
         data = request.POST
-
         route = SavedRoute.objects.create(
             user=user,
             origin=data.get('origin', ''),
             destination=data.get('destination', ''),
-            origin_latitude=float(data.get('origin_latitude', 0)),
-            origin_longitude=float(data.get('origin_longitude', 0)),
-            destination_latitude=float(data.get('destination_latitude', 0)),
-            destination_longitude=float(data.get('destination_longitude', 0)),
+            origin_latitude=_parse_decimal(data.get('origin_latitude')),
+            origin_longitude=_parse_decimal(data.get('origin_longitude')),
+            destination_latitude=_parse_decimal(data.get('destination_latitude')),
+            destination_longitude=_parse_decimal(data.get('destination_longitude')),
             transport_type=data.get('transport_type', 'Unknown'),
             code=data.get('code', ''),
-            fare=float(data.get('fare', 0))
+            fare=_parse_decimal(data.get('fare') or 0)
         )
 
         return JsonResponse({
@@ -703,13 +736,25 @@ def save_route(request):
                 'destination': route.destination,
                 'transport_type': route.transport_type,
                 'code': route.code,
-                'fare': float(route.fare)
+                'fare': float(route.fare) if route.fare is not None else 0
             }
         })
-
     except Exception as e:
+        logger.exception("Error saving route via ajax")
         return JsonResponse({'success': False, 'error': str(e)})
 
 
+@require_GET
 def get_jeep_codes(request):
     return JsonResponse({'codes': [code for code, _ in JEEPNEY_CODE_CHOICES]})
+
+
+def _get_session_key(request):
+    if not request.session.session_key:
+        request.session.create()
+    return request.session.session_key
+
+
+def logout_view(request):
+    logout(request)
+    return redirect('/')
