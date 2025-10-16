@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const originLon = $('#id_origin_longitude');
     const destLat = $('#id_destination_latitude');
     const destLon = $('#id_destination_longitude');
-    const codeInput = $('#id_code');
+    const codeInput = $('#id_code'); // This can be null, which is the source of the error
     const notesInput = $('#id_notes');
     const detectBtn = $('#detectLocationBtn');
     const saveBtn = $('#saveMyRouteBtn');
@@ -191,15 +191,14 @@ document.addEventListener('DOMContentLoaded', () => {
             destination_latitude: destLat.value,
             destination_longitude: destLon.value,
             origin_text: originInput.value,
-            destination_text: destinationInput.value
+            destination_text: destinationInput.value,
+            transport_type: transportSelect.value
         })}`;
     });
 
     // === Fare Calculation ===
     function updateFare() {
-        if (!transportSelect || !fareDisplay || !fareInput) return;
-        
-        const type = transportSelect.value;
+        const type = transportSelect?.value;
         if (!type) return;
 
         fareDisplay.textContent = 'Php 0.00';
@@ -208,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (timeInput) timeInput.value = '';
 
         if (type === 'Jeepney') {
-            if (codeInput) codeInput.value = 'UNKNOWN';
+            codeInput.value = 'UNKNOWN';
             fareInput.value = '13.00';
             fareDisplay.textContent = 'Php ~13.00 (Fixed)';
             return;
@@ -233,7 +232,8 @@ document.addEventListener('DOMContentLoaded', () => {
         originInput?.addEventListener(evt, updateFare);
         destinationInput?.addEventListener(evt, updateFare);
     });
-    setTimeout(updateFare, 300);
+
+    updateFare();
 
     // === Geolocation Detection ===
     detectBtn?.addEventListener('click', () => {

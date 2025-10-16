@@ -132,32 +132,57 @@ def calculate_distance_and_time(start_lat, start_lon, end_lat, end_lon):
 
 
 def calculate_fare(transport_type, distance_km, travel_time_minutes):
-    if distance_km is None or travel_time_minutes is None:
+    """
+    Calculates the estimated fare based on the transport type and distance,
+    using the logic provided for Cebu's transport system.
+    """
+    if distance_km is None:
         return None
+    
     try:
-        distance_km = Decimal(distance_km)
-        travel_time_minutes = Decimal(travel_time_minutes)
+        distance = Decimal(distance_km)
+        # Use a default of 0 for travel time if not provided
+        waiting_time = Decimal(travel_time_minutes or 0)
+        fare = Decimal('0.00')
 
-        if transport_type == 'Taxi':
-            base_fare = Decimal('40.00')
-            fare_per_km = Decimal('13.50')
-            fare_per_minute = Decimal('2.00')
-            return Decimal(f"{(base_fare + fare_per_km * distance_km + fare_per_minute * travel_time_minutes):.2f}")
-        if transport_type == 'Motorcycle':
-            base_fare = Decimal('20.00')
-            fare_per_km = Decimal('10.00')
-            return Decimal(f"{(base_fare + fare_per_km * distance_km):.2f}")
         if transport_type == 'Jeepney':
-            # Flat rate preserved from original
-            return Decimal('13.00')
+            base = Decimal('13.00')
+            rate = Decimal('1.80')
+            if distance <= 4:
+                fare = base
+            else:
+                fare = base + (distance - 4) * rate
+        
+        elif transport_type == 'Bus':
+            base = Decimal('15.00')
+            rate = Decimal('2.25')
+            if distance <= 4:
+                fare = base
+            else:
+                fare = base + (distance - 4) * rate
+
+        elif transport_type == 'Taxi':
+            base = Decimal('40.00')
+            rate_km = Decimal('13.50')
+            rate_waiting = Decimal('1.00') # ₱1 per minute
+            fare = base + (distance * rate_km) + (waiting_time * rate_waiting)
+
+        elif transport_type == 'Motorcycle':
+            base = Decimal('20.00')
+            if distance <= 1:
+                fare = base
+            elif distance <= 8:
+                fare = base + (distance - 1) * Decimal('16.00')
+            else:
+                # Fare for first 8km + fare for remaining distance
+                fare = base + (Decimal('7') * Decimal('16.00')) + (distance - 8) * Decimal('20.00')
+
+        return Decimal(f"{fare:.2f}")
+
     except Exception:
         logger.exception("Fare calculation failed")
-    return None
+        return None
 
-
-# -----------------------------
-# OpenRouteService helpers (cached)
-# -----------------------------
 
 def _ors_cache_key(a_lat, a_lon, b_lat, b_lon, profile):
     return f"ors:{float(a_lat):.6f},{float(a_lon):.6f}:{float(b_lat):.6f},{float(b_lon):.6f}:{profile}"
@@ -217,101 +242,38 @@ def store_route_path(route_instance, route_geojson):
     try:
         feature = route_geojson['features'][0]
         coords = feature.get('geometry', {}).get('coordinates', [])
-        # ORS returns [lon, lat]; convert to [lat, lon]
         path_coords = [[float(lat), float(lon)] for lon, lat in coords]
         route_instance.route_path_coords = json.dumps(path_coords)
     except Exception:
         logger.exception("Failed storing route path")
 
 
-# -----------------------------
-# View helpers (extracted from big views)
-# -----------------------------
-
-def _get_coords_from_request_data(text_value: str, lat_str: str = None, lon_str: str = None):
-    """Return (lat, lon, error_message) — lat/lon are Decimal or None."""
-    if lat_str and lon_str:
-        try:
-            return Decimal(lat_str), Decimal(lon_str), None
-        except InvalidOperation:
-            return None, None, 'Invalid latitude/longitude.'
-
-    # Use cached geocoder
-    geocoded = cached_geocode(text_value)
-    if geocoded:
-        lat, lon, address = geocoded
-        return Decimal(str(lat)), Decimal(str(lon)), None
-    return None, None, f"Could not find coordinates for '{text_value}'."
-
-
-def _build_map_html(center_lat, center_lon, origin_marker=None, dest_marker=None, routes=[]):
-    """Build and return folium map HTML. 'routes' is a list of dicts with path_coords and popup."""
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=DEFAULT_MAP_ZOOM)
-
-    if origin_marker:
-        folium.Marker(
-            [float(origin_marker['lat']), float(origin_marker['lon'])],
-            popup=origin_marker.get('popup', 'Origin'),
-            icon=folium.Icon(color='blue', prefix='fa', icon='location-dot')
-        ).add_to(m)
-
-    if dest_marker:
-        folium.Marker(
-            [float(dest_marker['lat']), float(dest_marker['lon'])],
-            popup=dest_marker.get('popup', 'Destination'),
-            icon=folium.Icon(color='darkred', prefix='fa', icon='flag-checkered')
-        ).add_to(m)
-
-    for r in routes:
-        coords = r.get('path_coords')
-        if coords and len(coords) >= 2:
-            folium.PolyLine(coords, weight=3, opacity=0.7, popup=r.get('popup')).add_to(m)
-        else:
-            # fallback: straight line between origin/dest
-            o = r.get('origin')
-            d = r.get('destination')
-            if o and d:
-                folium.PolyLine([ [float(o['lat']), float(o['lon'])], [float(d['lat']), float(d['lon'])] ], weight=3, opacity=0.7, popup=r.get('popup')).add_to(m)
-
-    return m._repr_html_()
-
-
-# -----------------------------
-# Views
-# -----------------------------
-
 @login_required(login_url='/')
 def index(request):
-    """Main dashboard view. Builds the folium map inline and injects click JS for pinning."""
+    """Main dashboard view. Builds the folium map and handles route calculation for display."""
     error_message = None
     success_message = None
 
-    # Suggestion filters (GET params)
+    # Get search/filter parameters from GET request
     origin_q = request.GET.get('origin_search', '')
     dest_q = request.GET.get('destination_search', '')
     transport_q = request.GET.get('transport_type_search', '')
     code_q = request.GET.get('jeepney_code_search', '')
 
-    # Base queryset for suggestions
+    # Filter suggested routes based on search parameters
     suggested_qs = Route.objects.all().order_by('transport_type', 'code', 'origin')
-
     filters = Q()
-    if origin_q:
-        filters &= Q(origin__icontains=origin_q)
-    if dest_q:
-        filters &= Q(destination__icontains=dest_q)
-    if transport_q:
-        filters &= Q(transport_type=transport_q)
-    if code_q:
-        filters &= Q(code=code_q)
-    if filters:
-        suggested_qs = suggested_qs.filter(filters)
+    if origin_q: filters &= Q(origin__icontains=origin_q)
+    if dest_q: filters &= Q(destination__icontains=dest_q)
+    if transport_q: filters &= Q(transport_type=transport_q)
+    if code_q: filters &= Q(code=code_q)
+    if filters: suggested_qs = suggested_qs.filter(filters)
 
-    # Forms
+    # Initialize forms
     form = RouteForm()
     suggestion_form = JeepneySuggestionForm()
 
-    # GET params for pre-filling map center and markers
+    # Get current origin/destination data from GET request (from Navigate button or pins)
     get_origin_lat = request.GET.get('origin_latitude')
     get_origin_lon = request.GET.get('origin_longitude')
     get_origin_text = request.GET.get('origin_text')
@@ -319,116 +281,69 @@ def index(request):
     get_dest_lon = request.GET.get('destination_longitude')
     get_dest_text = request.GET.get('destination_text')
 
-    current_origin_lat = _parse_decimal(get_origin_lat) if get_origin_lat else None
-    current_origin_lon = _parse_decimal(get_origin_lon) if get_origin_lon else None
-    current_dest_lat = _parse_decimal(get_dest_lat) if get_dest_lat else None
-    current_dest_lon = _parse_decimal(get_dest_lon) if get_dest_lon else None
-
-    # Choose map center
-    if current_origin_lat and current_origin_lon and current_dest_lat and current_dest_lon:
+    current_origin_lat = _parse_decimal(get_origin_lat)
+    current_origin_lon = _parse_decimal(get_origin_lon)
+    current_dest_lat = _parse_decimal(get_dest_lat)
+    current_dest_lon = _parse_decimal(get_dest_lon)
+    
+    # Determine map center
+    if current_origin_lat and current_dest_lat:
         center_lat = (float(current_origin_lat) + float(current_dest_lat)) / 2
         center_lon = (float(current_origin_lon) + float(current_dest_lon)) / 2
-    elif current_origin_lat and current_origin_lon:
+    elif current_origin_lat:
         center_lat, center_lon = float(current_origin_lat), float(current_origin_lon)
-    elif current_dest_lat and current_dest_lon:
+    elif current_dest_lat:
         center_lat, center_lon = float(current_dest_lat), float(current_dest_lon)
     else:
         center_lat, center_lon = DEFAULT_MAP_CENTER
 
-    # Caching key
-    map_cache_key = f"map_html:{center_lat:.6f},{center_lon:.6f}:{origin_q}:{dest_q}:{transport_q}:{code_q}:{request.user.id if request.user.is_authenticated else request.session.session_key}"
-    map_html = cache.get(map_cache_key)
+    # Initialize calculated values for context
+    calculated_fare = None
+    calculated_distance = None
+    calculated_time = None
+    
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=DEFAULT_MAP_ZOOM)
 
-    if not map_html:
-        # Build folium map inline
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=DEFAULT_MAP_ZOOM)
+    if current_origin_lat and current_origin_lon:
+        folium.Marker([float(current_origin_lat), float(current_origin_lon)], popup=get_origin_text or "Origin", icon=folium.Icon(color='blue', icon='circle', prefix='fa')).add_to(m)
 
-        if current_origin_lat and current_origin_lon:
-            folium.Marker(
-                [float(current_origin_lat), float(current_origin_lon)],
-                popup=get_origin_text or "Origin",
-                icon=folium.Icon(color='blue', icon='circle', prefix='fa')
-            ).add_to(m)
+    if current_dest_lat and current_dest_lon:
+        folium.Marker([float(current_dest_lat), float(current_dest_lon)], popup=get_dest_text or "Destination", icon=folium.Icon(color='red', icon='circle', prefix='fa')).add_to(m)
 
-        if current_dest_lat and current_dest_lon:
-            folium.Marker(
-                [float(current_dest_lat), float(current_dest_lon)],
-                popup=get_dest_text or "Destination",
-                icon=folium.Icon(color='red', icon='circle', prefix='fa')
-            ).add_to(m)
+    # If both origin and destination are set, calculate route and fare
+    if current_origin_lat and current_origin_lon and current_dest_lat and current_dest_lon:
+        try:
+            transport_type_for_route = request.GET.get('transport_type', 'Jeepney')
+            
+            distance_km, travel_minutes, route_geojson = get_route_and_calculate(
+                current_origin_lat, current_origin_lon,
+                current_dest_lat, current_dest_lon,
+                transport_type_for_route
+            )
+            
+            if distance_km is not None:
+                calculated_distance = distance_km
+                calculated_time = travel_minutes
+                calculated_fare = calculate_fare(transport_type_for_route, distance_km, travel_minutes)
 
+            if route_geojson and 'features' in route_geojson and route_geojson['features']:
+                coords = route_geojson['features'][0]['geometry']['coordinates']
+                path_coords = [[coord[1], coord[0]] for coord in coords]
+                folium.PolyLine(path_coords, color="#2B86C3EE", weight=8, opacity=0.8, popup="Calculated Route").add_to(m)
+            else:
+                folium.PolyLine([[float(current_origin_lat), float(current_origin_lon)], [float(current_dest_lat), float(current_dest_lon)]], color="#FF0000", weight=3, opacity=0.7, popup="Approximate route (ORS failed)").add_to(m)
+        except Exception as e:
+            logger.error(f"Error drawing route on map: {e}")
 
-        # Draw route between current origin and destination if both exist
-        route_geojson = None
-        
-        if current_origin_lat and current_origin_lon and current_dest_lat and current_dest_lon:
-            try:
-                distance_km, travel_minutes, route_geojson = get_route_and_calculate(
-                    current_origin_lat,
-                    current_origin_lon,
-                    current_dest_lat,
-                    current_dest_lon,
-                    'driving-car'
-                )
+    # Draw suggested routes on the map
+    for route in suggested_qs[:100]:
+        path_coords = route.get_path_coords()
+        if path_coords:
+            folium.PolyLine(path_coords, color='purple', weight=3, opacity=0.7, popup=f"{route.transport_type} {route.code or ''}").add_to(m)
 
-                if route_geojson and 'features' in route_geojson and route_geojson['features']:
-                    feature = route_geojson['features'][0]
-                    coords = feature['geometry']['coordinates']
-                    path_coords = [[coord[1], coord[0]] for coord in coords]
-                    folium.PolyLine(path_coords,
-                        color="#2B86C3EE",
-                        weight=8,
-                        opacity=0.8,
-                        popup="Route"
-                    ).add_to(m)
-                else:
-                    folium.PolyLine(
-                        [[float(current_origin_lat), float(current_origin_lon)],
-                        [float(current_dest_lat), float(current_dest_lon)]],
-                        color="#2B86C3EE",
-                        weight=3,
-                        opacity=0.7,
-                        popup="Approximate route"
-                    ).add_to(m)
-
-            except Exception as e:
-                print("ORS route drawing error:", e)
-
-        # Draw suggested routes (limit to 100 for performance)
-        for route in suggested_qs[:100]:
-            if all([route.origin_latitude, route.origin_longitude, route.destination_latitude, route.destination_longitude]):
-                # If model stores full path coords, use them; otherwise use straight line
-                path_coords = None
-                try:
-                    if hasattr(route, 'get_path_coords'):
-                        path_coords = route.get_path_coords()
-                except Exception:
-                    logger.exception("Error getting path coords for route %s", route.id)
-
-                if path_coords and len(path_coords) >= 2:
-                    folium.PolyLine(
-                        path_coords,
-                        color='purple',
-                        weight=3,
-                        opacity=0.7,
-                        popup=f"{route.transport_type} {route.code or ''}: {route.origin} → {route.destination}").add_to(m)
-                else:
-                    folium.PolyLine(
-                        [[float(route.origin_latitude), float(route.origin_longitude)],
-                         [float(route.destination_latitude), float(route.destination_longitude)]],
-                        color='purple',
-                        weight=3,
-                        opacity=0.7,
-                        popup=f"{route.transport_type} {route.code or ''}: {route.origin} → {route.destination}"
-                    ).add_to(m)
-
-        folium.LayerControl().add_to(m)
-
-
-        # -- Inject JavaScript for map click-to-pin behavior --
-        # Keep this JS indentation-free (no leading spaces) to avoid stray indentation in output.
-        # ayaw jud ni hilabta kay mao ni siya ang maka ping og locatoin without the need to use you computers GPS
-        click_js = """
+    folium.LayerControl().add_to(m)
+    
+    click_js = """
 // Runs inside the Folium iframe
 function initFoliumMap() {
   for (const key in window) {
@@ -489,20 +404,17 @@ function attachHandlers() {
 
 initFoliumMap();
 """
-        m.get_root().html.add_child(folium.Element(f"<script>{click_js}</script>"))
+    m.get_root().html.add_child(folium.Element(f"<script>{click_js}</script>"))
+    map_html = m._repr_html_()
 
-        # Render map HTML and cache
-        use_cache = not (current_origin_lat and current_dest_lat)
-        map_html = m._repr_html_()
-        cache.set(map_cache_key, map_html, MAP_HTML_CACHE_TTL)
-
-    # Saved routes for user or session
+    # Get saved routes for the user or session
     if request.user.is_authenticated:
         saved_routes = SavedRoute.objects.filter(user=request.user)
     else:
-        if not request.session.session_key:
-            request.session.create()
         sk = request.session.session_key
+        if not sk:
+            request.session.create()
+            sk = request.session.session_key
         saved_routes = SavedRoute.objects.filter(session_key=sk)
 
     context = {
@@ -519,6 +431,9 @@ initFoliumMap();
         'search_destination': dest_q,
         'search_transport_type': transport_q,
         'search_jeepney_code': code_q,
+        'calculated_fare': calculated_fare,
+        'calculated_distance': calculated_distance,
+        'calculated_time': calculated_time,
     }
 
     return render(request, 'route_input/index.html', context)
@@ -533,60 +448,46 @@ def plan_route(request):
 
     route_instance = form.save(commit=False)
 
-    # First prefer client-supplied coordinates (hidden inputs)
     post_origin_lat = request.POST.get('origin_latitude')
     post_origin_lon = request.POST.get('origin_longitude')
     post_dest_lat = request.POST.get('destination_latitude')
     post_dest_lon = request.POST.get('destination_longitude')
 
-    # Origin
     if post_origin_lat and post_origin_lon:
-        try:
-            route_instance.origin_latitude = Decimal(post_origin_lat)
-            route_instance.origin_longitude = Decimal(post_origin_lon)
-        except InvalidOperation:
-            return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Invalid origin coordinates.'})
+        route_instance.origin_latitude = _parse_decimal(post_origin_lat)
+        route_instance.origin_longitude = _parse_decimal(post_origin_lon)
     else:
         lat, lon, err = _get_coords_from_request_data(route_instance.origin)
-        if err:
-            return render(request, 'route_input/index.html', {'form': form, 'error_message': err})
+        if err: return render(request, 'route_input/index.html', {'form': form, 'error_message': err})
         route_instance.origin_latitude = lat
         route_instance.origin_longitude = lon
 
-    # Destination
     if post_dest_lat and post_dest_lon:
-        try:
-            route_instance.destination_latitude = Decimal(post_dest_lat)
-            route_instance.destination_longitude = Decimal(post_dest_lon)
-        except InvalidOperation:
-            return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Invalid destination coordinates.'})
+        route_instance.destination_latitude = _parse_decimal(post_dest_lat)
+        route_instance.destination_longitude = _parse_decimal(post_dest_lon)
     else:
         lat, lon, err = _get_coords_from_request_data(route_instance.destination)
-        if err:
-            return render(request, 'route_input/index.html', {'form': form, 'error_message': err})
+        if err: return render(request, 'route_input/index.html', {'form': form, 'error_message': err})
         route_instance.destination_latitude = lat
         route_instance.destination_longitude = lon
 
-    # Try ORS for exact route
-    if all([route_instance.origin_latitude, route_instance.origin_longitude, route_instance.destination_latitude, route_instance.destination_longitude]):
+    if all([route_instance.origin_latitude, route_instance.destination_latitude]):
         distance_km, travel_minutes, route_geojson = get_route_and_calculate(
             route_instance.origin_latitude, route_instance.origin_longitude,
             route_instance.destination_latitude, route_instance.destination_longitude,
             route_instance.transport_type
         )
-        if distance_km and travel_minutes:
+        if distance_km is not None:
             route_instance.distance_km = distance_km
             route_instance.travel_time_minutes = travel_minutes
             route_instance.fare = calculate_fare(route_instance.transport_type, distance_km, travel_minutes)
             store_route_path(route_instance, route_geojson)
-        else:
-            # Fallback to simple geodesic estimate
+        else: # Fallback
             d_km, t_min = calculate_distance_and_time(route_instance.origin_latitude, route_instance.origin_longitude, route_instance.destination_latitude, route_instance.destination_longitude)
             route_instance.distance_km = d_km
             route_instance.travel_time_minutes = t_min
             route_instance.fare = calculate_fare(route_instance.transport_type, d_km, t_min)
 
-    # sanitize code field for non-jeepney
     if route_instance.transport_type != 'Jeepney':
         route_instance.code = None
     else:
@@ -595,22 +496,12 @@ def plan_route(request):
     try:
         route_instance.save()
         logger.info("Saved route %s -> %s (id=%s)", route_instance.origin, route_instance.destination, route_instance.id)
-
-        # Redirect back with route data for displaying on map
-        return redirect(
-            f"/?origin_latitude={route_instance.origin_latitude}"
-            f"&origin_longitude={route_instance.origin_longitude}"
-            f"&origin_text={route_instance.origin}"
-            f"&destination_latitude={route_instance.destination_latitude}"
-            f"&destination_longitude={route_instance.destination_longitude}"
-            f"&destination_text={route_instance.destination}"
-        )
+        return redirect(f"/?origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}")
     except DatabaseError:
         logger.exception("DB Error saving route")
         return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Database error saving route.'})
 
 
-# Keep the community suggestion endpoint separated
 @require_POST
 def suggest_route(request):
     form = JeepneySuggestionForm(request.POST)
@@ -620,13 +511,8 @@ def suggest_route(request):
     return render(request, 'route_input/index.html', {'suggestion_form': form, 'error_message': 'Please complete all required fields.'})
 
 
-# -----------------------------
-# AJAX / API endpoints (require CSRF token)
-# -----------------------------
-
 @require_POST
 def save_current_route(request):
-    """Save a route (AJAX) for the current user or session."""
     origin = request.POST.get('origin')
     destination = request.POST.get('destination')
     transport_type = request.POST.get('transport_type')
@@ -634,10 +520,7 @@ def save_current_route(request):
     fare_val = request.POST.get('fare')
     notes = request.POST.get('notes')
 
-    route = Route.objects.filter(
-        Q(origin=origin) & Q(destination=destination) & Q(transport_type=transport_type) & Q(code=code)
-    ).first()
-
+    route = Route.objects.filter(Q(origin=origin) & Q(destination=destination) & Q(transport_type=transport_type) & Q(code=code)).first()
     saved = SavedRoute.objects.create(
         user=request.user if request.user.is_authenticated else None,
         session_key=request.session.session_key or _get_session_key(request),
@@ -651,22 +534,17 @@ def save_current_route(request):
         transport_type=transport_type,
         code=code,
         fare=fare_val or 0,
-        notes=notes or "",
-        created_at=timezone.now() if hasattr(SavedRoute, 'created_at') else None
+        notes=notes or ""
     )
-
     return JsonResponse({"message": "Route saved successfully!", "id": saved.id})
 
 
 @require_POST
 def save_suggested_route(request):
     route_id = request.POST.get('route_id')
-    if not route_id:
-        return JsonResponse({'error': 'route_id required'}, status=400)
-    try:
-        route = Route.objects.get(pk=int(route_id))
-    except Route.DoesNotExist:
-        return JsonResponse({'error': 'Route not found'}, status=404)
+    if not route_id: return JsonResponse({'error': 'route_id required'}, status=400)
+    try: route = Route.objects.get(pk=int(route_id))
+    except Route.DoesNotExist: return JsonResponse({'error': 'Route not found'}, status=404)
 
     saved = SavedRoute.objects.create(
         user=request.user if request.user.is_authenticated else None,
@@ -681,30 +559,21 @@ def save_suggested_route(request):
         transport_type=route.transport_type,
         code=route.code,
         fare=route.fare or 0,
-        notes=route.notes or "",
-        created_at=timezone.now() if hasattr(SavedRoute, 'created_at') else None
+        notes=route.notes or ""
     )
-
     return JsonResponse({"message": "Suggested route saved!", "id": saved.id})
 
 
 @require_POST
 def delete_saved_route(request):
     saved_id = request.POST.get('saved_id')
-    if not saved_id:
-        return JsonResponse({'success': False, 'error': 'saved_id required.'}, status=400)
-    try:
-        saved = SavedRoute.objects.get(pk=int(saved_id))
-    except (SavedRoute.DoesNotExist, ValueError):
-        return JsonResponse({'success': False, 'error': 'Not found.'}, status=404)
+    if not saved_id: return JsonResponse({'success': False, 'error': 'saved_id required.'}, status=400)
+    try: saved = SavedRoute.objects.get(pk=int(saved_id))
+    except (SavedRoute.DoesNotExist, ValueError): return JsonResponse({'success': False, 'error': 'Not found.'}, status=404)
 
-    # Ownership check
-    if request.user.is_authenticated:
-        if saved.user != request.user:
-            return JsonResponse({'success': False, 'error': 'Forbidden.'}, status=403)
-    else:
-        if saved.session_key != (request.session.session_key or _get_session_key(request)):
-            return JsonResponse({'success': False, 'error': 'Forbidden.'}, status=403)
+    if (request.user.is_authenticated and saved.user != request.user) or \
+       (not request.user.is_authenticated and saved.session_key != (request.session.session_key or _get_session_key(request))):
+        return JsonResponse({'success': False, 'error': 'Forbidden.'}, status=403)
 
     saved.delete()
     return JsonResponse({'success': True})
@@ -713,10 +582,9 @@ def delete_saved_route(request):
 @require_POST
 def save_route_ajax(request):
     try:
-        user = request.user if request.user.is_authenticated else None
         data = request.POST
         route = SavedRoute.objects.create(
-            user=user,
+            user=request.user if request.user.is_authenticated else None,
             origin=data.get('origin', ''),
             destination=data.get('destination', ''),
             origin_latitude=_parse_decimal(data.get('origin_latitude')),
@@ -727,18 +595,7 @@ def save_route_ajax(request):
             code=data.get('code', ''),
             fare=_parse_decimal(data.get('fare') or 0)
         )
-
-        return JsonResponse({
-            'success': True,
-            'route': {
-                'id': route.id,
-                'origin': route.origin,
-                'destination': route.destination,
-                'transport_type': route.transport_type,
-                'code': route.code,
-                'fare': float(route.fare) if route.fare is not None else 0
-            }
-        })
+        return JsonResponse({'success': True, 'route': {'id': route.id, 'origin': route.origin, 'destination': route.destination, 'transport_type': route.transport_type, 'code': route.code, 'fare': float(route.fare or 0)}})
     except Exception as e:
         logger.exception("Error saving route via ajax")
         return JsonResponse({'success': False, 'error': str(e)})
