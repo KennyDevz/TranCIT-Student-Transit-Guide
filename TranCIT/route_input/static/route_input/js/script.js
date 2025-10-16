@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const originLon = $('#id_origin_longitude');
     const destLat = $('#id_destination_latitude');
     const destLon = $('#id_destination_longitude');
-    const codeInput = $('#id_code');
+    const codeInput = $('#id_code'); // This can be null, which is the source of the error
     const notesInput = $('#id_notes');
     const detectBtn = $('#detectLocationBtn');
     const saveBtn = $('#saveMyRouteBtn');
@@ -142,12 +142,17 @@ document.addEventListener('DOMContentLoaded', () => {
             destination_latitude: destLat.value,
             destination_longitude: destLon.value,
             origin_text: originInput.value,
-            destination_text: destinationInput.value
+            destination_text: destinationInput.value,
+            transport_type: transportSelect.value
         })}`;
     });
 
     // === Fare Calculation ===
     function updateFare() {
+        if (distInput && distInput.value && parseFloat(distInput.value) > 0) {
+            return; 
+        }
+
         const type = transportSelect?.value;
         if (!type) return;
 
@@ -157,7 +162,16 @@ document.addEventListener('DOMContentLoaded', () => {
         timeInput.value = '';
 
         if (type === 'Jeepney') {
-            codeInput.value = 'UNKNOWN';
+            // ===================================================================
+            // ===== START: THE FINAL FIX FOR THE CONSOLE ERROR ==============
+            // ===================================================================
+            // Only try to set the value if the codeInput element actually exists.
+            if (codeInput) {
+                codeInput.value = 'UNKNOWN';
+            }
+            // ===================================================================
+            // ===== END: THE FINAL FIX ========================================
+            // ===================================================================
             fareInput.value = '13.00';
             fareDisplay.textContent = 'Php ~13.00 (Fixed)';
             return;
@@ -182,7 +196,8 @@ document.addEventListener('DOMContentLoaded', () => {
         originInput?.addEventListener(evt, updateFare);
         destinationInput?.addEventListener(evt, updateFare);
     });
-    setTimeout(updateFare, 300);
+
+    updateFare();
 
     // === Geolocation Detection ===
     detectBtn?.addEventListener('click', () => {
