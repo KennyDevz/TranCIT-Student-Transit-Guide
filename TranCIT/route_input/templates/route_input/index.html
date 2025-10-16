@@ -86,17 +86,24 @@
 
         <div id="fareDisplay">
           <label>Estimated Fare:</label>
-          <p id="calculatedFare">Php 0.00</p>
+          <p id="calculatedFare">
+            {% if calculated_fare is not None %}
+              Php {{ calculated_fare|floatformat:2 }}
+            {% else %}
+              Php 0.00
+            {% endif %}
+          </p>
         </div>
 
         {# Hidden fields for backend calculation and saving #}
-        <input type="hidden" name="{{ form.fare.name }}" id="id_fare" value="{{ form.fare.value|default:'0.00' }}">
-        <input type="hidden" name="{{ form.distance_km.name }}" id="id_distance_km" value="{{ form.distance_km.value|default:'' }}">
-        <input type="hidden" name="{{ form.travel_time_minutes.name }}" id="id_travel_time_minutes" value="{{ form.travel_time_minutes.value|default:'' }}">
-        <input type="hidden" name="{{ form.origin_latitude.name }}" id="id_origin_latitude" value="{{ form.origin_latitude.value|default:'' }}">
-        <input type="hidden" name="{{ form.origin_longitude.name }}" id="id_origin_longitude" value="{{ form.origin_longitude.value|default:'' }}">
-        <input type="hidden" name="{{ form.destination_latitude.name }}" id="id_destination_latitude" value="{{ form.destination_latitude.value|default:'' }}">
-        <input type="hidden" name="{{ form.destination_longitude.name }}" id="id_destination_longitude" value="{{ form.destination_longitude.value|default:'' }}">
+        <input type="hidden" name="fare" id="id_fare" value="{{ calculated_fare|default:'0.00' }}">
+        <input type="hidden" name="distance_km" id="id_distance_km" value="{{ calculated_distance|default:'' }}">
+        <input type="hidden" name="travel_time_minutes" id="id_travel_time_minutes" value="{{ calculated_time|default:'' }}">
+        
+        <input type="hidden" name="origin_latitude" id="id_origin_latitude" value="{{ get_origin_lat|default:'' }}">
+        <input type="hidden" name="origin_longitude" id="id_origin_longitude" value="{{ get_origin_lon|default:'' }}">
+        <input type="hidden" name="destination_latitude" id="id_destination_latitude" value="{{ get_dest_lat|default:'' }}">
+        <input type="hidden" name="destination_longitude" id="id_destination_longitude" value="{{ get_dest_lon|default:'' }}">
 
         <label for="{{ form.notes.id_for_label }}">Additional Notes (Optional)</label>
         {{ form.notes }}
