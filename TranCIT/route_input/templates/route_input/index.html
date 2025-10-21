@@ -1,10 +1,9 @@
-{# --- START OF FILE index.html --- #}
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>TranCIT Prototype</title>
+  <title>TranCIT</title>
   <link rel="stylesheet" href="{% static 'route_input/css/styles.css' %}">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
@@ -18,15 +17,18 @@
         </a>
       </li>
       <input type="text" placeholder="Search..">
-    </ul>
+      <li class="logout-container">
+        <a href="{% url 'logout' %}" class="logout-btn" onclick="handleLogout(event)">
+          Log out
+        </a>
+      </li>
   </div>
 
   <div class="container">
-
-    <!-- Left Panel (User's Route Planning) -->
     <aside class="sidebar">
       <h3>Plan Your Route</h3>
-      <form id="routeForm" method="post" action="{% url 'routes_page' %}" novalidate>
+      
+      <form id="routeForm" method="post" action="{% url 'plan_route' %}" novalidate>
         {% csrf_token %}
         <input type="hidden" name="form_type" value="plan_route">
 
@@ -36,9 +38,21 @@
                value="{{ get_origin_text|default_if_none:form.origin.value }}"
                {% if form.origin.field.required %}required{% endif %}
                class="form-control">
+
+        <div class="pin-controls" style="margin-top: 10px;">
+          <button type="button" id="pinOriginBtn" class="btn btn-sm">
+            <i class="fa-solid fa-map-pin"></i> Pin Origin on Map
+          </button>
+          <button type="button" id="pinDestinationBtn" class="btn btn-sm">
+            <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
+          </button>
+        </div>
+
+        <div class="divider">──────────  or  ──────────</div>
         <button type="button" id="detectLocationBtn" class="btn btn-sm">
           <i class="fa-solid fa-location-crosshairs"></i> Detect My Location
         </button>
+        
         <span class="error" id="error-origin">
           {% if form.origin.errors %}{{ form.origin.errors }}{% endif %}
         </span>
@@ -62,8 +76,8 @@
           {% if form.transport_type.errors %}{{ form.transport_type.errors }}{% endif %}
         </span>
 
-        <!-- Add this block below -->
         <div class="form-actions" style="margin-top: 10px;">
+          
           <button type="submit" class="btn primary" id="navigateBtn">
             <i class="fa-solid fa-route"></i> Navigate Route
           </button>
@@ -71,20 +85,24 @@
 
         <div id="fareDisplay">
           <label>Estimated Fare:</label>
-          <p id="calculatedFare">Php 0.00</p>
+          <p id="calculatedFare">
+            {% if calculated_fare is not None %}
+              Php {{ calculated_fare|floatformat:2 }}
+            {% else %}
+              Php 0.00
+            {% endif %}
+          </p>
         </div>
 
         {# Hidden fields for backend calculation and saving #}
-        <input type="hidden" name="fare" id="id_fare" value="{{ form.fare.value|default:'0.00' }}">
-        <input type="hidden" name="distance_km" id="id_distance_km" value="{{ form.distance_km.value|default:'' }}">
-        <input type="hidden" name="travel_time_minutes" id="id_travel_time_minutes" value="{{ form.travel_time_minutes.value|default:'' }}">
-        <input type="hidden" name="origin_latitude" id="id_origin_latitude" value="{{ current_origin_lat|default:'' }}">
-        <input type="hidden" name="origin_longitude" id="id_origin_longitude" value="{{ current_origin_lon|default:'' }}">
-        <input type="hidden" name="destination_latitude" id="id_destination_latitude" value="{{ current_destination_lat|default:'' }}">
-        <input type="hidden" name="destination_longitude" id="id_destination_longitude" value="{{ current_destination_lon|default:'' }}">
-        {# --- ADDED THIS MISSING HIDDEN INPUT FOR 'code' --- #}
-        <input type="hidden" name="code" id="id_code" value="{{ form.code.value|default:'' }}">
-
+        <input type="hidden" name="fare" id="id_fare" value="{{ calculated_fare|default:'0.00' }}">
+        <input type="hidden" name="distance_km" id="id_distance_km" value="{{ calculated_distance|default:'' }}">
+        <input type="hidden" name="travel_time_minutes" id="id_travel_time_minutes" value="{{ calculated_time|default:'' }}">
+        
+        <input type="hidden" name="origin_latitude" id="id_origin_latitude" value="{{ get_origin_lat|default:'' }}">
+        <input type="hidden" name="origin_longitude" id="id_origin_longitude" value="{{ get_origin_lon|default:'' }}">
+        <input type="hidden" name="destination_latitude" id="id_destination_latitude" value="{{ get_dest_lat|default:'' }}">
+        <input type="hidden" name="destination_longitude" id="id_destination_longitude" value="{{ get_dest_lon|default:'' }}">
 
         <label for="{{ form.notes.id_for_label }}">Additional Notes (Optional)</label>
         {{ form.notes }}
@@ -127,8 +145,8 @@
                   <p style="margin: 3px 0; font-size: 12px;">{{ saved.origin }} → {{ saved.destination }}</p>
                   <p style="margin: 0; font-size: 11px; color: #4CAF50;">Php {{ saved.fare|floatformat:2 }}</p>
                 </div>
-                <div style="display: flex; gap: 5px; margin-top: 8px;">
-                  <button type="button" class="btn-icon use-saved-route"
+                <div class="saved-route-actions">
+                  <button type="button" class="btn-icon use-saved-route" 
                           data-origin="{{ saved.origin }}"
                           data-destination="{{ saved.destination }}"
                           data-origin-lat="{{ saved.origin_latitude }}"
@@ -140,7 +158,7 @@
                           title="Use this route">
                     <i class="fa-solid fa-arrow-right"></i>
                   </button>
-                  <button type="button" class="btn-icon delete-saved-route"
+                  <button type="button" class="btn-icon delete-saved-route" 
                           data-saved-id="{{ saved.id }}"
                           title="Delete">
                     <i class="fa-solid fa-trash"></i>
@@ -155,28 +173,24 @@
       </div>
     </aside>
 
-    <!-- Map Area -->
     <main class="map-area">
+      <div id="map-loader" class="loader">
+        Loading map...
+      </div>
+
       <div id="map-container">
         {{ map|safe }}
       </div>
     </main>
 
-    <!-- Right Panel (Community Route Suggestions) -->
     <aside class="suggestions">
       <h3><i class="fa-solid fa-lightbulb"></i> Jeepney Route Suggestions</h3>
-      <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
-        {% if current_origin_lat and current_destination_lat %}
-            Suggested jeepney routes from <strong>{{ get_origin_text|truncatechars:30 }}</strong> to <strong>{{ get_destination_text|truncatechars:30 }}</strong>
-        {% else %}
-            Community-contributed jeepney routes
-        {% endif %}
-      </p>
+      <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Community-contributed jeepney routes</p>
 
       <div id="dynamicSuggestions">
-        {% if suggested_jeepney_routes %} {# Changed from all_routes to suggested_jeepney_routes #}
-          {% for route in suggested_jeepney_routes %} {# Iterate over filtered suggestions #}
-            {# Only show Jeepney routes in suggestions (already filtered in view, but extra check is fine) #}
+        {% if all_routes %}
+          {% for route in all_routes %}
+            {# Only show Jeepney routes in suggestions #}
             {% if route.transport_type == 'Jeepney' %}
               <div class="journey-card {% if route.id|stringformat:'s' == highlight_route_id %}highlighted-route{% endif %}">
                 <div class="journey-header">
@@ -203,23 +217,15 @@
                 <div style="display: flex; gap: 5px; margin-top: 8px;">
                   <button type="button" class="btn btn-sm view-journey-on-map-btn" style="flex: 1; background-color: #2196F3; color: white;"
                           data-route-id="{{ route.id }}"
-                          data-origin-lat="{{ route.origin_latitude|default_if_none:'' }}"
-                          data-origin-lon="{{ route.origin_longitude|default_if_none:'' }}"
-                          data-dest-lat="{{ route.destination_latitude|default_if_none:'' }}"
-                          data-dest-lon="{{ route.destination_longitude|default_if_none:'' }}"
+                          data-origin-lat="{{ route.origin_latitude }}"
+                          data-origin-lon="{{ route.origin_longitude }}"
+                          data-dest-lat="{{ route.destination_latitude }}"
+                          data-dest-lon="{{ route.destination_longitude }}"
                           data-route-code="{{ route.code }}"
                           data-transport-type="{{ route.transport_type }}"
-                          data-route-origin="{{ route.origin|escapejs }}" {# Escape for JS compatibility #}
-                          data-route-destination="{{ route.destination|escapejs }}" {# Escape for JS compatibility #}
-                          onclick="viewRouteOnMap(
-                            this.dataset.routeId,
-                            this.dataset.originLat,
-                            this.dataset.originLon,
-                            this.dataset.routeOrigin,
-                            this.dataset.destLat,
-                            this.dataset.destLon,
-                            this.dataset.routeDestination
-                          );"
+                          data-route-origin="{{ route.origin }}"
+                          data-route-destination="{{ route.destination }}"
+                          onclick="window.location.href='?route_id={{ route.id }}'"
                           title="View this route on the map">
                     <i class="fa-solid fa-map"></i> View Route
                   </button>
@@ -236,13 +242,8 @@
           <div class="journey-card">
             <p style="text-align: center; color: #999;">
               <i class="fa-solid fa-info-circle"></i><br>
-              {% if current_origin_lat and current_destination_lat %}
-                No jeepney routes found matching your origin and destination.<br>
-                Try suggesting a route below!
-              {% else %}
-                No jeepney route suggestions yet.<br>
-                Enter your origin and destination in the left panel to see personalized suggestions!
-              {% endif %}
+              No jeepney route suggestions yet.<br>
+              Be the first to contribute!
             </p>
           </div>
         {% endif %}
@@ -254,35 +255,35 @@
       <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
         Help others by sharing jeepney routes you know
       </p>
-      <form id="suggestRouteForm" method="post" action="{% url 'routes_page' %}">
+      
+      <form id="suggestRouteForm" method="post" action="{% url 'suggest_route' %}">
         {% csrf_token %}
         <input type="hidden" name="form_type" value="suggest_route">
         <input type="hidden" name="transport_type" value="Jeepney">
-
+        
         <label for="suggest_origin">Route Origin</label>
-        <input type="text" name="origin" id="suggest_origin"
-               placeholder="e.g., SM City Cebu"
+        <input type="text" name="origin" id="suggest_origin" 
+               placeholder="e.g., SM City Cebu" 
                class="form-control" required>
-
+        
         <label for="suggest_destination">Route Destination</label>
-        <input type="text" name="destination" id="suggest_destination"
-               placeholder="e.g., Ayala Center"
+        <input type="text" name="destination" id="suggest_destination" 
+               placeholder="e.g., Ayala Center" 
                class="form-control" required>
-
+        
         <label for="suggest_code">Jeepney Code</label>
-        {# Use the JEEPNEY_CODE_CHOICES directly from context #}
         <select name="code" id="suggest_code" class="form-control" required>
           <option value="">Select jeepney code</option>
-          {% for code_value, code_label in JEEPNEY_CODE_CHOICES %}
+          {% for code_value, code_label in form.code.field.choices %}
             <option value="{{ code_value }}">{{ code_label }}</option>
           {% endfor %}
         </select>
-
+        
         <label for="suggest_notes">Route Details (Optional)</label>
-        <textarea name="notes" id="suggest_notes"
-                  placeholder="Additional info about this route..."
+        <textarea name="notes" id="suggest_notes" 
+                  placeholder="Additional info about this route..." 
                   rows="3" class="form-control"></textarea>
-
+        
         <button type="submit" class="btn primary">
           <i class="fa-solid fa-paper-plane"></i> Submit Suggestion
         </button>
@@ -291,19 +292,6 @@
 
   </div>
 
-  {# JSON_SCRIPT Block for JavaScript variables #}
-  <script id="django-context" type="application/json">
-    {
-      "currentOriginLat": {{ current_origin_lat|default:"null"|floatformat:-1 }},
-      "currentOriginLon": {{ current_origin_lon|default:"null"|floatformat:-1 }},
-      "currentDestinationLat": {{ current_destination_lat|default:"null"|floatformat:-1 }},
-      "currentDestinationLon": {{ current_destination_lon|default:"null"|floatformat:-1 }},
-      "getOriginText": "{{ get_origin_text|escapejs }}",
-      "getDestinationText": "{{ get_destination_text|escapejs }}"
-    }
-  </script>
-
-  <script src="{% static 'route_input/js/script.js' %}?v=1.0.2"></script> {# Added cache buster #}
+  <script src="{% static 'route_input/js/script.js' %}"></script>
 </body>
 </html>
-{# --- END OF FILE index.html --- #}
