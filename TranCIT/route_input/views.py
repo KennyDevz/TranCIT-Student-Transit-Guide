@@ -1,3 +1,5 @@
+# --- START OF FILE: route_input/views.py ---
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.cache import cache
 from django.conf import settings
@@ -16,6 +18,10 @@ import openrouteservice
 import json
 import logging
 import folium
+
+# --- 1. ADD THIS IMPORT ---
+from django.urls import reverse 
+# --- END 1. ---
 
 from .forms import RouteForm, JeepneySuggestionForm
 from .models import Route, SavedRoute, JEEPNEY_CODE_CHOICES
@@ -225,8 +231,9 @@ def get_route_and_calculate(start_lat, start_lon, end_lat, end_lon, transport_ty
     try:
         feature = route_data['features'][0]
         props = feature.get('properties', {})
-        distance_m = props.get('summary', {}).get('distance', 0)
-        duration_s = props.get('summary', {}).get('duration', 0)
+        summary = props.get('summary', {})
+        distance_m = summary.get('distance', 0)
+        duration_s = summary.get('duration', 0)
         distance_km = Decimal(str(distance_m / 1000))
         travel_time_minutes = Decimal(str(duration_s / 60))
         return distance_km, travel_time_minutes, route_data
@@ -439,6 +446,22 @@ initFoliumMap();
     return render(request, 'route_input/index.html', context)
 
 
+def _get_coords_from_request_data(address_text):
+    """Helper to geocode text from POST data, with fallback."""
+    if not address_text:
+        return None, None, "Address text was empty."
+    
+    # Try geocoding the full text
+    geo_result = cached_geocode(address_text)
+    if geo_result:
+        # cached_geocode returns a tuple (lat, lon, address)
+        return geo_result[0], geo_result[1], None
+    
+    # Fallback/Error
+    logger.warning("Could not geocode address during POST: %s", address_text)
+    return None, None, f"Could not find coordinates for: {address_text}. Please pin it on the map."
+
+
 @require_POST
 def plan_route(request):
     """Endpoint to handle route planning + saving. Expects CSRF token if called from JS."""
@@ -496,7 +519,13 @@ def plan_route(request):
     try:
         route_instance.save()
         logger.info("Saved route %s -> %s (id=%s)", route_instance.origin, route_instance.destination, route_instance.id)
-        return redirect(f"/?origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}")
+        
+        # --- 2. CHANGE THIS LINE ---
+        base_url = reverse('routes_page')
+        query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
+        return redirect(f"{base_url}?{query_params}")
+        # --- END 2. ---
+
     except DatabaseError:
         logger.exception("DB Error saving route")
         return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Database error saving route.'})
@@ -507,7 +536,7 @@ def suggest_route(request):
     form = JeepneySuggestionForm(request.POST)
     if form.is_valid():
         form.save()
-        return redirect('routes_page')
+        return redirect('routes_page') # This one is already correct!
     return render(request, 'route_input/index.html', {'suggestion_form': form, 'error_message': 'Please complete all required fields.'})
 
 
@@ -615,3 +644,5 @@ def _get_session_key(request):
 def logout_view(request):
     logout(request)
     return redirect('/')
+
+# --- END OF FILE: route_input/views.py ---
