@@ -3,14 +3,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const showRegisterBtn = document.getElementById('showRegister');
     const showLoginBtn = document.getElementById('showLogin');
     
+    // Function to clear messages and reset form inputs for the opposite form
+    function clearOppositeForm(isGoingToRegister) {
+        if (isGoingToRegister) {
+            // Going to register, clear login form
+            const loginForm = document.querySelector('.form-panel:first-child form');
+            const loginMessages = document.querySelector('.form-panel:first-child .form-messages');
+            if (loginForm) loginForm.reset();
+            if (loginMessages) loginMessages.innerHTML = '';
+        } else {
+            // Going to login, clear register form
+            const registerForm = document.querySelector('.form-panel:nth-child(2) form');
+            const registerMessages = document.querySelector('.form-panel:nth-child(2) .form-messages');
+            if (registerForm) registerForm.reset();
+            if (registerMessages) registerMessages.innerHTML = '';
+        }
+        
+        // Reset all input borders
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach(input => {
+            input.style.borderColor = '#ddd';
+        });
+    }
+    
     if (showRegisterBtn) {
         showRegisterBtn.addEventListener('click', function() {
+            clearOppositeForm(true); // true = going to register
             authWrapper.classList.add('register-active');
         });
     }
     
     if (showLoginBtn) {
         showLoginBtn.addEventListener('click', function() {
+            clearOppositeForm(false); // false = going to login
             authWrapper.classList.remove('register-active');
         });
     }
@@ -31,19 +56,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
-            const password = form.querySelector('input[name="password"]');
-            const passwordConfirm = form.querySelector('input[name="password_confirm"]');
-            
-            if (password && passwordConfirm) {
-                if (password.value !== passwordConfirm.value) {
-                    isValid = false;
-                    passwordConfirm.style.borderColor = '#dc3545';
-                    e.preventDefault();
-                    alert('Passwords do not match!');
-                    return;
-                }
-            }
-            
+        
             if (!isValid) {
                 e.preventDefault();
             }

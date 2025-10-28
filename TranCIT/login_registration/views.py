@@ -2,49 +2,71 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib import messages
+from .forms import RegistrationForm, LoginForm
 
 def login_view(request):
-    if request.method == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        
-        user = authenticate(request, username=username, password=password)
-        
-        if user is not None:
-            login(request, user)
-            messages.success(request, f'Welcome back, {username}!')
-            return redirect('/routes/')
-        else:
-            messages.error(request, 'Invalid username or password.')
+    # If user is already authenticated, redirect them
+    if request.user.is_authenticated:
+        return redirect('/routes/')
     
-    return render(request, 'login_registration/login.html')
+    show_register = False
+    
+    if request.method == 'POST':
+        form = LoginForm(request.POST)
+        if form.is_valid():
+            username = form.cleaned_data.get('username')
+            password = form.cleaned_data.get('password')
+            
+            user = authenticate(request, username=username, password=password)
+            
+            if user is not None:
+                login(request, user)
+                return redirect('/routes/')
+            else:
+                # This handles authentication failures
+                messages.error(request, 'Invalid username or password.')
+        else:
+            # This handles form validation errors
+            for field_errors in form.errors.values():
+                for error in field_errors:
+                    messages.error(request, error)
+    
+    return render(request, 'login_registration/login.html', {
+        'show_register': show_register
+    })
 
 def register_view(request):
-    if request.method == 'POST':
-        username = request.POST.get('username')
-        email = request.POST.get('email')
-        password = request.POST.get('password')
-        password_confirm = request.POST.get('password_confirm')
-        
-        if password != password_confirm:
-            messages.error(request, 'Passwords do not match.')
-            return render(request, 'login_registration/login.html', {'show_register': True})
-        
-        if User.objects.filter(username=username).exists():
-            messages.error(request, 'Username already exists.')
-            return render(request, 'login_registration/login.html', {'show_register': True})
-        
-        if User.objects.filter(email=email).exists():
-            messages.error(request, 'Email already registered.')
-            return render(request, 'login_registration/login.html', {'show_register': True})
-        
-        user = User.objects.create_user(username=username, email=email, password=password)
-        user.save()
-        
-        messages.success(request, 'Account created successfully! Please log in.')
-        return redirect('login_registration:login')
+    # If user is already authenticated, redirect them
+    if request.user.is_authenticated:
+        return redirect('/routes/')
     
-    return render(request, 'login_registration/login.html', {'show_register': True})
+    show_register = True
+    
+    if request.method == 'POST':
+        form = RegistrationForm(request.POST)
+        if form.is_valid():
+            username = form.cleaned_data.get('username')
+            email = form.cleaned_data.get('email')
+            password = form.cleaned_data.get('password')
+            
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password
+            )
+            user.save()
+            
+            messages.success(request, 'Account created successfully! Please log in.')
+            return redirect('login_registration:login')
+        else:
+            # Handle form validation errors
+            for field_errors in form.errors.values():
+                for error in field_errors:
+                    messages.error(request, error)
+    
+    return render(request, 'login_registration/login.html', {
+        'show_register': show_register
+    })
 
 def logout_view(request):
     logout(request)

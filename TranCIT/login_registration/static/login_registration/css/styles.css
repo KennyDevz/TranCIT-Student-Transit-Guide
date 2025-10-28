@@ -18,7 +18,7 @@ body {
     position: relative;
     width: 900px;
     max-width: 95%;
-    height: 550px;
+    height: 650px;
     background: white;
     border-radius: 15px;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
@@ -83,6 +83,18 @@ body {
 
 .form-messages {
     margin-bottom: 20px;
+}
+
+.error-message {
+    color: #dc3545;
+    font-size: 12px;
+    margin-top: 5px;
+    padding: 5px 0;
+    font-weight: 500;
+}
+
+.input-group input.error {
+    border-color: #dc3545;
 }
 
 .message {

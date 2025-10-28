@@ -18,6 +18,7 @@
                         <p>Welcome Back!</p>
                     </div>
 
+           
                     {% if messages and not show_register %}
                     <div class="form-messages">
                         {% for message in messages %}
@@ -28,7 +29,7 @@
                     </div>
                     {% endif %}
 
-                    <form method="post" action="{% url 'login_registration:login' %}">
+                    <form method="post" action="{% url 'login_registration:login' %}" novalidate>
                         {% csrf_token %}
                         
                         <div class="input-group">
@@ -63,6 +64,7 @@
                         <p>Create Your Account</p>
                     </div>
 
+                    
                     {% if messages and show_register %}
                     <div class="form-messages">
                         {% for message in messages %}
@@ -73,7 +75,7 @@
                     </div>
                     {% endif %}
 
-                    <form method="post" action="{% url 'login_registration:register' %}">
+                    <form method="post" action="{% url 'login_registration:register' %}" novalidate>
                         {% csrf_token %}
                         
                         <div class="input-group">
@@ -103,7 +105,7 @@
                                 id="registerPassword" 
                                 name="password" 
                                 autocomplete="new-password"
-                                required>
+                                required minlength="8">
                             <span class="input-hint">Must be at least 8 characters</span>
                         </div>
 
