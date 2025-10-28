@@ -75,10 +75,7 @@ The Student Transit Guide provides a robust set of tools to address these issues
 
 5. **Install the required packages**
    ```bash
-   # Install base environment dependencies
-   pip install -r requirements.txt
-   
-   # Install project-specific dependencies
+   # Install dependencies
    pip install -r TranCIT/requirements.txt
 
 6. **Create .env file to store environment-specific variables.**
@@ -93,6 +90,8 @@ The Student Transit Guide provides a robust set of tools to address these issues
 
 7. **Run database migrations**
    ```bash
+   cd TranCIT
+
    python manage.py makemigrations
    python manage.py migrate
    ```
